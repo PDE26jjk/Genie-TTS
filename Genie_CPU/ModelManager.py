@@ -6,8 +6,9 @@ import onnxruntime
 from onnxruntime import InferenceSession
 from typing import Optional
 import numpy as np
+from importlib.resources import files
+from huggingface_hub import hf_hub_download
 
-from .Utils.Config import config
 from .Utils.Shared import context
 from .Utils.Utils import LRUCacheDict
 
@@ -44,6 +45,23 @@ def convert_bin_to_fp32(
     fp32_array.tofile(output_fp32_bin_path)
 
 
+def download_model(filename: str, repo_id: str = 'High-Logic/Genie') -> Optional[str]:
+    try:
+        package_root = files("Genie_CPU")
+        model_dir = str(package_root / "Data")
+        os.makedirs(model_dir, exist_ok=True)
+
+        model_path = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            cache_dir=model_dir
+        )
+        return model_path
+
+    except Exception as e:
+        logger.error(f"下载模型 {filename} 失败: {str(e)}", exc_info=True)
+
+
 def convert_bins_to_fp32(model_dir: str) -> None:
     fp16_fp32_pairs = [
         (_GSVModelFile.T2S_DECODER_WEIGHT_FP16, _GSVModelFile.T2S_DECODER_WEIGHT_FP32),
@@ -63,8 +81,7 @@ def convert_bins_to_fp32(model_dir: str) -> None:
 
 class ModelManager:
     def __init__(self):
-        self.character_to_model: dict[str, dict[str, InferenceSession]] = LRUCacheDict(
-            capacity=config.MAX_CACHED_CHARACTER_MODELS)
+        self.character_to_model: dict[str, dict[str, InferenceSession]] = LRUCacheDict(capacity=3)
         self.character_model_paths: dict[str, str] = {}  # 创建一个持久化字典来存储角色模型路径
         self.providers = ["CPUExecutionProvider"]
 
@@ -73,15 +90,21 @@ class ModelManager:
         self.load_cn_hubert()
 
     def load_cn_hubert(self) -> bool:
+        model_path: Optional[str] = os.getenv("HUBERT_MODEL_PATH")
+        if not (model_path and os.path.isfile(model_path)):
+            model_path = download_model('chinese-hubert-base.onnx')
+        if not model_path:
+            return False
+
         try:
-            self.cn_hubert = onnxruntime.InferenceSession(config.HUBERT_MODEL_PATH,
+            self.cn_hubert = onnxruntime.InferenceSession(model_path,
                                                           providers=self.providers,
                                                           sess_options=SESS_OPTIONS)
             logger.info(f"成功加载了 CN_HuBERT 模型。")
             return True
         except Exception as e:
             logger.error(
-                f"错误: 加载 ONNX 模型 '{config.HUBERT_MODEL_PATH}' 失败。\n"
+                f"错误: 加载 ONNX 模型 '{model_path}' 失败。\n"
                 f"详细信息: {e}"
             )
         return False

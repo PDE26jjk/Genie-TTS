@@ -17,6 +17,7 @@ VITS_ONNX_PATH = r"./Data/v2/Models/vits_fp32.onnx"
 T2S_KEYS_PATH = "./Data/v2/Keys/t2s_onnx_keys.txt"
 VITS_KEYS_PATH = "./Data/v2/Keys/vits_onnx_keys.txt"
 CACHE_DIR = f"./Cache"
+OUTPUT_DIR = f"./Output"
 
 
 def find_ckpt_and_pth(directory: str) -> Tuple[Optional[str], Optional[str]]:
@@ -47,7 +48,7 @@ def remove_folder(folder: str) -> None:
 
 def convert(torch_model_path: str):
     character_name: str = os.path.basename(torch_model_path)
-    output_dir: str = f"./Output/{character_name}"
+    output_dir: str = os.path.join(OUTPUT_DIR, character_name)
 
     if os.path.exists(output_dir):
         logger.warning(f'输出文件夹 {output_dir} 已存在，将覆盖内容。')

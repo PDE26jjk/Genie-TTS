@@ -1,5 +1,4 @@
 from ..Utils.Utils import LRUCacheDict
-from ..Utils.Config import config
 from ..Japanese.JapaneseG2P import japanese_to_phones
 from ..Utils.Constants import BERT_FEATURE_DIM
 from ..Audio.Audio import load_audio
@@ -11,7 +10,7 @@ from typing import Optional
 
 
 class ReferenceAudio:
-    _prompt_cache: dict[str, 'ReferenceAudio'] = LRUCacheDict(capacity=config.MAX_CACHED_REFERENCE_AUDIO)
+    _prompt_cache: dict[str, 'ReferenceAudio'] = LRUCacheDict(capacity=10)
 
     def __new__(cls, prompt_wav: str, prompt_text: str):
         if prompt_wav in cls._prompt_cache:

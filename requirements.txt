@@ -7,3 +7,4 @@ soxr
 pyyaml
 rich
 pyaudio
+huggingface_hub

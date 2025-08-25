@@ -6,13 +6,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gpt-sovits-onnx"
-version = "0.1.0"
+version = "1.0"
 authors = [
-  { name="High_Logic", email="highlogic233@gmail.com" },
+    { name = "High_Logic", email = "highlogic233@gmail.com" },
 ]
-description = "An ONNX-based inference engine for the GPT-Sovits project, featuring original model conversion support."
+description = "GPT-SoVITS ONNX Inference Engine & Model Converter"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "MIT License" }
 classifiers = [
     "License :: OSI Approved :: MIT License",
@@ -38,6 +38,13 @@ dependencies = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/High-Logic/Genie"
 
-# Homepage = "https://github.com/your-username/your-repo"
-# Bug Tracker = "https://github.com/your-username/your-repo/issues"
+[tool.setuptools.packages.find]
+where = ["Genie_CPU"]
+
+[tool.setuptools.package-data]
+Genie_CPU = [
+    "Data/v2/Keys/**/*",
+    "Data/v2/Models/**/*"
+]

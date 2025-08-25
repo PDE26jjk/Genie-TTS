@@ -2,14 +2,13 @@
 """
 用于纯日语的 G2P。
 """
-import os
-
-os.environ['OPEN_JTALK_DICT_DIR'] = './Data/open_jtalk_dic_utf_8-1.11'
+# import os
+# os.environ['OPEN_JTALK_DICT_DIR'] = './Data/open_jtalk_dic_utf_8-1.11'
 
 import re
 import pyopenjtalk
 from typing import List
-from Source.Japanese.SymbolsV2 import symbols_v2, symbol_to_id_v2
+from .SymbolsV2 import symbols_v2, symbol_to_id_v2
 
 # 匹配连续的标点符号
 _CONSECUTIVE_PUNCTUATION_RE = re.compile(r"([,./?!~…・])\1+")
