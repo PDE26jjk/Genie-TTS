@@ -150,24 +150,3 @@ def japanese_to_phones(text: str) -> list[int]:
     phones = ["UNK" if ph not in symbols_v2 else ph for ph in phones]
     phones = [symbol_to_id_v2[ph] for ph in phones]
     return phones
-
-
-if __name__ == '__main__':
-    g2p_converter = JapaneseG2P()
-
-    test_text_1 = "殺し合いなどせずとも、争いを解決できる方法はきっとあります。"
-    test_text_2 = "これはg2pテストです。利用料金は25%割引になります。"
-
-    print(f"原文: {test_text_1}")
-    # 带韵律
-    phones_1_prosody = g2p_converter.g2p(test_text_1, with_prosody=True)
-    print(f"带韵律音素: {' '.join(phones_1_prosody)}")
-    # 不带韵律
-    phones_1_no_prosody = g2p_converter.g2p(test_text_1, with_prosody=False)
-    print(f"不带韵律音素: {' '.join(phones_1_no_prosody)}")
-
-    print("---")
-
-    print(f"原文: {test_text_2}")
-    phones_2_prosody = g2p_converter.g2p(test_text_2, with_prosody=True)
-    print(f"带韵律音素: {' '.join(phones_2_prosody)}")

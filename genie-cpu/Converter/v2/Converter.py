@@ -1,6 +1,7 @@
 from .VITSConverter import VITSConverter
 from .T2SConverter import T2SModelConverter
 from .EncoderConverter import EncoderConverter
+from ...Utils.Constants import PACKAGE_NAME
 
 import logging
 from typing import Optional, Tuple
@@ -12,7 +13,6 @@ import contextlib
 
 logger = logging.getLogger()
 
-PACKAGE_NAME = "Genie_CPU"
 CACHE_DIR = os.path.join(os.getcwd(), "Cache")
 _ENCODER_RESOURCE_PATH = "Data/v2/Models/t2s_encoder_fp32.onnx"
 _STAGE_DECODER_RESOURCE_PATH = "Data/v2/Models/t2s_stage_decoder_fp32.onnx"

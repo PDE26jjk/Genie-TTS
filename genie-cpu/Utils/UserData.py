@@ -4,6 +4,8 @@ from typing import Dict, Any
 import logging
 import importlib.resources
 
+from .Constants import PACKAGE_NAME
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,5 +40,5 @@ class UserDataManager:
         self._save()
 
 
-userdata_file: str = str(importlib.resources.files('Genie_CPU') / 'UserData.json')
+userdata_file: str = str(importlib.resources.files(PACKAGE_NAME) / 'UserData.json')
 userdata_manager = UserDataManager(file_path=userdata_file)

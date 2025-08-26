@@ -10,6 +10,7 @@ from importlib.resources import files
 from huggingface_hub import hf_hub_download
 
 from .Utils.Shared import context
+from .Utils.Constants import PACKAGE_NAME
 from .Utils.Utils import LRUCacheDict
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def convert_bin_to_fp32(
 
 def download_model(filename: str, repo_id: str = 'High-Logic/Genie') -> Optional[str]:
     try:
-        package_root = files("Genie_CPU")
+        package_root = files(PACKAGE_NAME)
         model_dir = str(package_root / "Data")
         os.makedirs(model_dir, exist_ok=True)
 

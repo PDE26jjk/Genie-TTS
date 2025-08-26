@@ -45,6 +45,8 @@ class TTSPlayer:
         self._start_time: Optional[float] = None
         self._end_time: Optional[float] = None
 
+        self._split: bool = False
+
     @staticmethod
     def _preprocess_for_playback(audio_float: np.ndarray) -> bytes:
         audio_int16 = (audio_float.squeeze() * 32767).astype(np.int16)
@@ -157,6 +159,7 @@ class TTSPlayer:
 
     def start_session(self,
                       play: bool = False,
+                      split: bool = False,
                       save_path: Optional[str] = None,
                       stream_queue: Optional[asyncio.Queue] = None
                       ):
@@ -187,6 +190,7 @@ class TTSPlayer:
             clear_queue(self._audio_queue)
 
             self._play = play
+            self._split = split
             self._current_save_path = save_path
             self._session_audio_chunks = []
             self._start_time = None
@@ -199,9 +203,12 @@ class TTSPlayer:
             if self._start_time is None:
                 self._start_time = time.time()
 
-            sentences = split_japanese_text(text_chunk.strip())
-            for sentence in sentences:
-                self._text_queue.put(sentence)
+            if self._split:
+                sentences = split_japanese_text(text_chunk.strip())
+                for sentence in sentences:
+                    self._text_queue.put(sentence)
+            else:
+                self._text_queue.put(text_chunk)
 
     def end_session(self):
         with self._api_lock:

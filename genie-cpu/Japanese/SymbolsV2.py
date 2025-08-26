@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
 
-"""
-定义和管理用于多语言文本处理的符号集。
-"""
-
 # -------------------------
 # 基础符号集定义
 # -------------------------
@@ -93,7 +89,6 @@ CANTONESE_SYMBOLS = {
 def _generate_pinyin_finals_with_tones(base_finals, num_tones=5):
     """根据基础韵母和声调数量，自动生成带声调的韵母列表。"""
     finals_with_tones = []
-    # 使用两个循环生成所有组合
     for tone in range(1, num_tones + 1):
         for final in base_finals:
             finals_with_tones.append(f"{final}{tone}")
@@ -101,18 +96,8 @@ def _generate_pinyin_finals_with_tones(base_finals, num_tones=5):
 
 
 def create_master_symbol_list():
-    """
-    汇集所有语言的符号，构建一个主符号列表。
-
-    此函数遵循原始代码的合并逻辑：
-    1. 合并并排序主要符号集。
-    2. 在末尾追加日文音调符号。
-    3. 在末尾追加排序后的韩语和粤语符号。
-    """
-    # 1. 自动生成带声调的中文韵母
     pinyin_finals = _generate_pinyin_finals_with_tones(PINYIN_FINALS_BASE)
 
-    # 2. 使用集合（set）合并主要符号，以自动处理重复项
     main_symbols = set()
     main_symbols.add("_")  # 添加下划线符号
     main_symbols.update(PINYIN_INITIALS)
@@ -121,25 +106,15 @@ def create_master_symbol_list():
     main_symbols.update(PUNCTUATION_SYMBOLS)
     main_symbols.update(ARPABET_SYMBOLS)
 
-    # 3. 构建最终列表，保留原始代码的特定追加顺序
-
-    # 首先是排序后的主符号集
     master_list = sorted(list(main_symbols))
-
-    # 然后追加日文音调符号
     master_list.extend(["[", "]"])
-
-    # 最后追加排序后的韩语和粤语符号
     master_list.extend(sorted(list(KOREAN_SYMBOLS)))
     master_list.extend(sorted(list(CANTONESE_SYMBOLS)))
-
     return master_list
 
 
 symbols_v2: list[str] = create_master_symbol_list()
 symbol_to_id_v2: dict[str, int] = {s: i for i, s in enumerate(symbols_v2)}
 
-# 程序的入口点
 if __name__ == "__main__":
-    # 打印符号总数
     print(f"生成的符号总数: {len(symbols_v2)}")
