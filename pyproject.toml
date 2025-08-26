@@ -44,7 +44,7 @@ Homepage = "https://github.com/High-Logic/Genie"
 where = ["src"]
 
 [tool.setuptools.package-data]
-genie_tts = [
-    "Data/v2/Keys/**/*",
-    "Data/v2/Models/**/*"
+"genie_tts" = [
+    "Data/v2/Models/*",
+    "Data/v2/Keys/*",
 ]

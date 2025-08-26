@@ -4,13 +4,15 @@ from ..Utils.Constants import BERT_FEATURE_DIM
 from ..Audio.Audio import load_audio
 from ..ModelManager import model_manager
 
+import os
 import numpy as np
 import soxr
 from typing import Optional
 
 
 class ReferenceAudio:
-    _prompt_cache: dict[str, 'ReferenceAudio'] = LRUCacheDict(capacity=10)
+    _prompt_cache: dict[str, 'ReferenceAudio'] = LRUCacheDict(
+        capacity=int(os.getenv('Max_Cached_Reference_Audio', '10')))
 
     def __new__(cls, prompt_wav: str, prompt_text: str):
         if prompt_wav in cls._prompt_cache:
@@ -40,6 +42,9 @@ class ReferenceAudio:
         )
         audio_16k: np.ndarray = soxr.resample(self.audio_32k, 32000, 16000, quality='hq')
         audio_16k = np.expand_dims(audio_16k, axis=0)  # 增加 Batch_Size 维度
+
+        if not model_manager.cn_hubert:
+            model_manager.load_cn_hubert()
         self.ssl_content: Optional[np.ndarray] = model_manager.cn_hubert.run(
             None, {'input_values': audio_16k}
         )[0]
@@ -51,3 +56,8 @@ class ReferenceAudio:
         self.phonemes_seq = np.array([japanese_to_phones(prompt_text)], dtype=np.int64)
         self.text_bert: Optional[np.ndarray] = np.zeros((self.phonemes_seq.shape[1], BERT_FEATURE_DIM),
                                                         dtype=np.float32)
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """清空 ReferenceAudio 的缓存"""
+        cls._prompt_cache.clear()

@@ -7,4 +7,4 @@ soxr
 pyyaml
 rich
 pyaudio
-huggingface_hub
+huggingface_hub[hf_xet]

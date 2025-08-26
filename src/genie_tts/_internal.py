@@ -1,34 +1,38 @@
-import asyncio
-import logging
+# 请严格遵循导入顺序。
+# 1、环境变量。
 import os
 from os import PathLike
+
+os.environ["HF_HUB_ENABLE_PROGRESS_BAR"] = "1"
+
+# 2、Logging。
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    datefmt="[%X]"
+)
+logger = logging.getLogger(__name__)
+
+# 3、ONNX。
+import onnxruntime
+
+onnxruntime.set_default_logger_severity(3)
+
+# 导入剩余库。
+
+import asyncio
 from typing import AsyncIterator, Optional
 
-import onnxruntime
-from rich.logging import RichHandler
-
 from .Audio.ReferenceAudio import ReferenceAudio
-from .Converter.v2.Converter import convert
 from .Core.TTSPlayer import tts_player
 from .ModelManager import model_manager
 from .Utils.Shared import context
 
-# Set onnxruntime logger to a less verbose level.
-# This should be configured before any onnxruntime session is created.
-onnxruntime.set_default_logger_severity(3)
-
-# Configure logging for the library.
-# This setup is placed before other imports to ensure it's applied early.
-logging.basicConfig(
-    level="INFO",
-    format="%(message)s",
-    datefmt="[%X]",
-    handlers=[RichHandler(rich_tracebacks=True)]
-)
-logger = logging.getLogger(__name__)
-
 # A module-level private dictionary to store reference audio configurations.
 _reference_audios: dict[str, dict] = {}
+SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
 
 
 def load_character(
@@ -78,6 +82,14 @@ def set_reference_audio(
         audio_path (str): The file path to the reference audio (e.g., a WAV file).
         audio_text (str): The transcript of the reference audio.
     """
+    # 检查文件后缀是否支持
+    ext = os.path.splitext(audio_path)[1].lower()
+    if ext not in SUPPORTED_AUDIO_EXTS:
+        logger.error(
+            f"Audio format '{ext}' is not supported. Only the following formats are supported: {SUPPORTED_AUDIO_EXTS}"
+        )
+        return
+
     _reference_audios[character_name] = {
         'audio_path': audio_path,
         'audio_text': audio_text,
@@ -231,6 +243,8 @@ def convert_to_onnx(
         logger.error("❌ PyTorch is not installed. Please run `pip install torch` first.")
         return
 
+    from .Converter.v2.Converter import convert
+
     torch_ckpt_path = os.fspath(torch_ckpt_path)
     torch_pth_path = os.fspath(torch_pth_path)
     output_dir = os.fspath(output_dir)
@@ -240,3 +254,10 @@ def convert_to_onnx(
         torch_ckpt_path=torch_ckpt_path,
         output_dir=output_dir,
     )
+
+
+def clear_reference_audio_cache() -> None:
+    """
+    Clears the cache of reference audio data.
+    """
+    ReferenceAudio.clear_cache()

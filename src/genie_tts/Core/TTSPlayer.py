@@ -1,4 +1,5 @@
 import queue
+import os
 import asyncio
 import threading
 import time
@@ -151,6 +152,7 @@ class TTSPlayer:
                 wf.setsampwidth(self.bytes_per_sample)
                 wf.setframerate(self.sample_rate)
                 wf.writeframes(self._preprocess_for_playback(full_audio))
+            logger.info(f"Audio successfully saved to {os.path.abspath(self._current_save_path)}")
         except Exception as e:
             logger.error(f"Failed to save audio: {e}")
         finally:
