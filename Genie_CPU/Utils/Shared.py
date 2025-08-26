@@ -2,7 +2,7 @@ from rich.console import Console
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from Source.Audio.ReferenceAudio import ReferenceAudio
+    from ..Audio.ReferenceAudio import ReferenceAudio
 
 console: Console = Console()
 

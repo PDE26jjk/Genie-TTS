@@ -59,7 +59,7 @@ def download_model(filename: str, repo_id: str = 'High-Logic/Genie') -> Optional
         return model_path
 
     except Exception as e:
-        logger.error(f"下载模型 {filename} 失败: {str(e)}", exc_info=True)
+        logger.error(f"Failed to download model {filename}: {str(e)}", exc_info=True)
 
 
 def convert_bins_to_fp32(model_dir: str) -> None:
@@ -73,10 +73,10 @@ def convert_bins_to_fp32(model_dir: str) -> None:
         fp32_bin = os.path.normpath(os.path.join(model_dir, fp32_name))
 
         if not os.path.exists(fp16_bin):
-            raise FileNotFoundError(f'权重文件 {fp16_bin} 不存在！')
+            raise FileNotFoundError(f"Weight file {fp16_bin} does not exist!")
         convert_bin_to_fp32(fp16_bin, fp32_bin)
 
-    logger.info(f"成功生成临时 FP32 权重以提高推理速度。")
+    logger.info("Successfully generated temporary FP32 weights to improve inference speed.")
 
 
 class ModelManager:
@@ -100,12 +100,12 @@ class ModelManager:
             self.cn_hubert = onnxruntime.InferenceSession(model_path,
                                                           providers=self.providers,
                                                           sess_options=SESS_OPTIONS)
-            logger.info(f"成功加载了 CN_HuBERT 模型。")
+            logger.info("Successfully loaded CN_HuBERT model.")
             return True
         except Exception as e:
             logger.error(
-                f"错误: 加载 ONNX 模型 '{model_path}' 失败。\n"
-                f"详细信息: {e}"
+                f"Error: Failed to load ONNX model '{model_path}'.\n"
+                f"Details: {e}"
             )
         return False
 
@@ -134,7 +134,7 @@ class ModelManager:
     def load_character(self, character_name: str, model_dir: str) -> bool:
         character_name = character_name.lower()
         if character_name in self.character_to_model:
-            logger.info(f"角色 '{character_name}' 已在缓存中，无需重复加载。")
+            logger.info(f"Character '{character_name}' is already in cache; no need to reload.")
             _ = self.character_to_model[character_name]  # 访问一次以更新其在LRU缓存中的位置
             return True
 
@@ -153,11 +153,11 @@ class ModelManager:
                 model_dict[model_file] = onnxruntime.InferenceSession(model_path,
                                                                       providers=self.providers,
                                                                       sess_options=SESS_OPTIONS)
-                logger.info(f"成功加载模型：{model_file}")
+                logger.info(f"Model loaded successfully: {model_file}")
             except Exception as e:
                 logger.error(
-                    f"错误: 加载 ONNX 模型 '{model_path}' 失败。\n"
-                    f"详细信息: {e}"
+                    f"Error: Failed to load ONNX model '{model_path}'.\n"
+                    f"Details: {e}"
                 )
                 return False
 
@@ -171,12 +171,10 @@ class ModelManager:
 
     def remove_character(self, character_name: str) -> None:
         character_name = character_name.lower()
-        if character_name not in self.character_to_model:
-            logger.info('角色并不在缓存中，无需删除。')
-        else:
+        if character_name in self.character_to_model:
             del self.character_to_model[character_name]
             gc.collect()
-            logger.info(f'移除角色 {character_name.capitalize()} 成功。')
+            logger.info(f"Character {character_name.capitalize()} removed successfully.")
 
     def __del__(self):
         temp_weights: list[str] = [_GSVModelFile.T2S_DECODER_WEIGHT_FP32, _GSVModelFile.VITS_WEIGHT_FP32]
@@ -187,7 +185,7 @@ class ModelManager:
                     if os.path.exists(filepath):
                         os.remove(filepath)
         except Exception as e:
-            print(f'删除临时权重文件失败: {e}')
+            logger.error(f"Failed to delete temporary weight file: {e}")
 
 
 model_manager: ModelManager = ModelManager()

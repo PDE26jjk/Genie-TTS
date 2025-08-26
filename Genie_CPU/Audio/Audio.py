@@ -28,7 +28,7 @@ def load_audio(
             wav = soxr.resample(wav, original_sr, target_sampling_rate, quality='hq')  # 重采样。
 
     except Exception as e:
-        logger.error(f"加载参考音频失败: {audio_path}。错误: {e}")
+        logger.error(f"Failed to load reference audio: {audio_path}. Error: {e}")
         return None
 
     # 检查音频长度是否在建议范围之外
@@ -36,8 +36,10 @@ def load_audio(
     max_samples = int(MAX_DURATION_S * target_sampling_rate)
     if not (min_samples <= wav.shape[0] <= max_samples):
         duration = len(wav) / target_sampling_rate
-        logger.warning(f"警告: 参考音频 '{os.path.basename(audio_path)}' 的时长为 {duration:.2f}秒，"
-                       f"超出了 {MIN_DURATION_S}~{MAX_DURATION_S} 秒的建议范围！")
+        logger.warning(
+            f"The reference audio '{os.path.basename(audio_path)}' has a duration of {duration:.2f} seconds, "
+            f"which is outside the recommended range of {MIN_DURATION_S} to {MAX_DURATION_S} seconds!"
+        )
 
     # 创建并拼接静音
     silence_samples = int(SILENCE_TO_APPEND_S * target_sampling_rate)

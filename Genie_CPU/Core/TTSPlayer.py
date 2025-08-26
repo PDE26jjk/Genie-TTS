@@ -69,7 +69,7 @@ class TTSPlayer:
 
                 gsv_model = model_manager.get(context.current_speaker)
                 if not gsv_model or not context.current_prompt_audio:
-                    logger.error('缺失模型/参考音频。')
+                    logger.error("Missing model or reference audio.")
                     continue
 
                 tts_client.stop_event.clear()
@@ -86,7 +86,7 @@ class TTSPlayer:
                     if self._end_time is None:
                         self._end_time = time.time()
                         duration: float = self._end_time - self._start_time
-                        logger.info(f"推理完成，耗时 {duration:.3f} 秒。")
+                        logger.info(f"First packet latency: {duration:.3f} seconds.")
                     if self._play:
                         self._audio_queue.put(audio_chunk)
                     if self._current_save_path:
@@ -95,7 +95,7 @@ class TTSPlayer:
                         audio_data = self._preprocess_for_playback(audio_chunk)
                         self._loop.call_soon_threadsafe(self._stream_queue.put_nowait, audio_data)
             except Exception as e:
-                logger.error(f"处理TTS任务时发生严重错误: {e}", exc_info=True)
+                logger.error(f"A critical error occurred while processing the TTS task: {e}", exc_info=True)
                 self._tts_done_event.set()
 
     def _playback_worker_loop(self):
@@ -129,7 +129,7 @@ class TTSPlayer:
                         stream = None
                     continue
                 except Exception as e:
-                    logger.error(f"播放音频时发生严重错误: {e}", exc_info=True)
+                    logger.error(f"A critical error occurred while playing audio: {e}", exc_info=True)
                     if stream is not None:
                         stream.stop_stream()
                         stream.close()
@@ -150,7 +150,7 @@ class TTSPlayer:
                 wf.setframerate(self.sample_rate)
                 wf.writeframes(self._preprocess_for_playback(full_audio))
         except Exception as e:
-            logger.error(f"保存音频失败: {e}")
+            logger.error(f"Failed to save audio: {e}")
         finally:
             self._session_audio_chunks = []
             self._current_save_path = None
@@ -169,7 +169,8 @@ class TTSPlayer:
                     self._stream_queue = stream_queue
                 except RuntimeError:
                     logger.warning(
-                        "start_session 包含了 stream_queue，但并非在 asyncio 事件循环中调用。流式传输将被忽略。")
+                        "The `start_session` contains `stream_queue` but is not called within an asyncio event loop. Streaming will be ignored."
+                    )
                     self._loop = None
 
             self._stop_event.clear()

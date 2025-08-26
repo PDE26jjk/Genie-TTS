@@ -20,8 +20,7 @@ class LRUCacheDict(OrderedDict):
             self.popitem(last=False)  # 删除最旧的（第一个）
 
 
-def clear_queue(q: queue.Queue):
-    """安全地清空一个队列，不访问私有属性。"""
+def clear_queue(q: queue.Queue) -> None:
     while not q.empty():
         try:
             q.get_nowait()

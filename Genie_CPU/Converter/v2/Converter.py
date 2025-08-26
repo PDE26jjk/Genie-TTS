@@ -14,7 +14,6 @@ logger = logging.getLogger()
 
 PACKAGE_NAME = "Genie_CPU"
 CACHE_DIR = os.path.join(os.getcwd(), "Cache")
-DEFAULT_OUTPUT_DIR = os.path.join(os.getcwd(), "Output")
 _ENCODER_RESOURCE_PATH = "Data/v2/Models/t2s_encoder_fp32.onnx"
 _STAGE_DECODER_RESOURCE_PATH = "Data/v2/Models/t2s_stage_decoder_fp32.onnx"
 _FIRST_STAGE_DECODER_RESOURCE_PATH = "Data/v2/Models/t2s_first_stage_decoder_fp32.onnx"
@@ -41,41 +40,20 @@ def remove_folder(folder: str) -> None:
     try:
         if os.path.exists(folder):
             shutil.rmtree(folder)
-            logger.info(f"🧹 已清理文件夹: {folder}")
+            logger.info(f"🧹 Folder cleaned: {folder}")
     except Exception as e:
-        logger.error(f'❌ 清理文件夹 {folder} 失败: {e}')
+        logger.error(f"❌ Failed to clean folder {folder}: {e}")
 
 
-def convert(torch_model_path: str, output_base_dir: Optional[str] = None):
-    """
-    转换模型。
-
-    Args:
-        torch_model_path (str): 包含 .ckpt 和 .pth 文件的源模型文件夹路径。
-        output_base_dir (str, optional): 用于存放所有转换结果的根目录。
-                                         如果为 None, 默认输出到当前工作目录下的 'Output' 文件夹。
-    """
-    # 如果用户没有提供输出目录，则使用默认值
-    if output_base_dir is None:
-        output_base_dir = DEFAULT_OUTPUT_DIR
-
-    character_name: str = os.path.basename(torch_model_path)
-    output_dir: str = os.path.join(output_base_dir, character_name)
-
+def convert(torch_ckpt_path: str,
+            torch_pth_path: str,
+            output_dir: str):
     # 确保缓存和输出目录存在
     os.makedirs(CACHE_DIR, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
 
     if len(os.listdir(output_dir)) > 0:
-        logger.warning(f'输出文件夹 {output_dir} 非空，将覆盖内容。')
-
-    torch_ckpt_path, torch_pth_path = find_ckpt_and_pth(torch_model_path)
-
-    if not torch_ckpt_path or not torch_pth_path:
-        logger.error(f'无法处理文件夹 {torch_model_path} 。请保证文件夹内有 GPT—SOVITS V2 导出的 .pth 和 .ckpt 模型。')
-        return
-
-    logger.info(f'正在处理 {torch_model_path} 。')
+        logger.warning(f"The output directory {output_dir} is not empty!")
 
     try:
         with contextlib.ExitStack() as stack:
@@ -116,9 +94,9 @@ def convert(torch_model_path: str, output_base_dir: Optional[str] = None):
                 converter_1.run_full_process()
                 converter_2.run_full_process()
                 converter_3.convert()
-                logger.info(f"🎉 转换成功，已保存至: {output_dir}\n")
+                logger.info(f"🎉 Conversion successful! Saved to: {output_dir}\n")
             except Exception:
-                logger.error(f"❌ 转换过程中发生严重错误")
+                logger.error(f"❌ A critical error occurred during the conversion process")
                 logger.error(traceback.format_exc())
                 remove_folder(output_dir)  # 只在失败时清理输出目录
 

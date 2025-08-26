@@ -1,14 +1,11 @@
 import onnxruntime as ort
 import numpy as np
 from typing import List, Optional
-import logging
 import threading
 
 from ..Audio.ReferenceAudio import ReferenceAudio
 from ..Japanese.JapaneseG2P import japanese_to_phones
 from ..Utils.Constants import BERT_FEATURE_DIM
-
-logger = logging.getLogger(__name__)
 
 
 class GENIE:

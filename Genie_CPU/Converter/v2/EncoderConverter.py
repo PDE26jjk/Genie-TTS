@@ -33,7 +33,7 @@ class EncoderConverter:
         # 检查所有输入文件是否存在
         for path in [self.ckpt_path, self.pth_path, self.onnx_input_path]:
             if not os.path.exists(path):
-                raise FileNotFoundError(f"错误: 输入文件未找到! 路径: {path}")
+                raise FileNotFoundError(f"Error: Input file not found! Path: {path}")
 
     def convert(self):
         # 1. 定义固定的 ONNX 权重键列表 (此顺序决定了 .bin 文件的布局)
@@ -69,12 +69,13 @@ class EncoderConverter:
                     source_dict = pth_state_dict
 
                 if source_dict is None:
-                    raise ValueError(f"❌ 严重错误: 无法为 ONNX 键 '{onnx_key}' 确定权重来源。")
-
+                    raise ValueError(
+                        f"❌ Critical error: Unable to determine the weight source for ONNX key '{onnx_key}'.")
                 # 从源文件中提取张量
                 tensor = source_dict.get(source_key)
                 if tensor is None:
-                    raise ValueError(f"❌ 严重错误: 在源文件中找不到键 '{source_key}' (对应 ONNX 键 '{onnx_key}')")
+                    raise ValueError(
+                        f"❌ Critical error: Key '{source_key}' (corresponding to ONNX key '{onnx_key}') not found in the source file.")
 
                 # 转换为 fp32 numpy 数组并获取字节
                 numpy_array_fp32 = tensor.to(torch.float32).cpu().numpy()

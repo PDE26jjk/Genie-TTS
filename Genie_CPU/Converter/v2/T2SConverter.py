@@ -48,44 +48,35 @@ class T2SModelConverter:
             (已根据用户验证脚本的正确逻辑进行最终修正)
         """
         if not os.path.exists(self.key_list_file):
-            raise FileNotFoundError(f"错误: 阶段 1 需要 Key 列表文件，但未找到: {self.key_list_file}")
+            raise FileNotFoundError(
+                f"Error: Stage 1 requires the key list file, but it was not found: {self.key_list_file}")
 
-        try:
-            with open(self.key_list_file, 'r') as f:
-                onnx_keys = [line.strip() for line in f.readlines()]
+        with open(self.key_list_file, 'r') as f:
+            onnx_keys = [line.strip() for line in f.readlines()]
 
-            ckpt_data = load_gpt_model(self.torch_ckpt_path)
-            if 'weight' not in ckpt_data:
-                raise KeyError(f"❌ 错误: 在 .ckpt 文件中找不到 'weight' 键。文件顶层键为: {list(ckpt_data.keys())}")
+        ckpt_data = load_gpt_model(self.torch_ckpt_path)
+        if 'weight' not in ckpt_data:
+            raise KeyError(
+                f"❌ Error: 'weight' key not found in the .ckpt file. Top-level keys in the file are: {list(ckpt_data.keys())}")
 
-            torch_state_dict = ckpt_data['weight']
+        torch_state_dict = ckpt_data['weight']
 
-            index_table = OrderedDict()
-            current_fp32_offset = 0
+        index_table = OrderedDict()
+        current_fp32_offset = 0
 
-            with open(self.fp16_bin_path, 'wb') as f_bin:
-                for onnx_key in onnx_keys:
-                    # --- 应用正确的键映射逻辑 ---
-                    # 1. 对 ONNX 键应用其自身的转换规则
-                    transformed_onnx_key = onnx_key.replace('transformer_encoder', 'h')
-                    # 2. 构造在原始 PyTorch 字典中要查找的键：
-                    #    即对转换后的 ONNX 键，应用 PyTorch 规则的“逆操作”（添加 'model.' 前缀）
-                    torch_lookup_key = f"model.{transformed_onnx_key}"
-                    # 3. 在 PyTorch state_dict 中查找
-                    torch_tensor = torch_state_dict.get(torch_lookup_key)
-                    # 写入 fp16 数据
-                    numpy_array_fp16 = torch_tensor.to(torch.float16).cpu().numpy()
-                    f_bin.write(numpy_array_fp16.tobytes())
-                    # 记录 fp32 布局
-                    tensor_length_fp32 = numpy_array_fp16.nbytes * 2
-                    index_table[onnx_key] = {'offset': current_fp32_offset, 'length': tensor_length_fp32}
-                    current_fp32_offset += tensor_length_fp32
+        with open(self.fp16_bin_path, 'wb') as f_bin:
+            for onnx_key in onnx_keys:
+                transformed_onnx_key = onnx_key.replace('transformer_encoder', 'h')
+                torch_lookup_key = f"model.{transformed_onnx_key}"
+                torch_tensor = torch_state_dict.get(torch_lookup_key)
+                numpy_array_fp16 = torch_tensor.to(torch.float16).cpu().numpy()
+                f_bin.write(numpy_array_fp16.tobytes())
+                tensor_length_fp32 = numpy_array_fp16.nbytes * 2
+                index_table[onnx_key] = {'offset': current_fp32_offset, 'length': tensor_length_fp32}
+                current_fp32_offset += tensor_length_fp32
 
-            with open(self.index_table_path, 'w') as f_json:
-                json.dump(index_table, f_json, indent=4)  # type: ignore
-        except Exception as e:
-            print(f"❌ 阶段 1 失败: {e}")
-            raise
+        with open(self.index_table_path, 'w') as f_json:
+            json.dump(index_table, f_json, indent=4)  # type: ignore
 
     def step2_relink_onnx_for_fp32(self, old_model: str, new_model: str):
         """
@@ -93,43 +84,31 @@ class T2SModelConverter:
             (使用与第一个脚本相同的、更稳定的底层方法)
         """
         if not os.path.exists(self.index_table_path):
-            raise FileNotFoundError(f"错误: 阶段 2 需要索引文件，但未找到: {self.index_table_path}")
+            raise FileNotFoundError(
+                f"Error: Stage 2 requires the index file, but it was not found: {self.index_table_path}")
 
-        try:
-            # 加载描述 fp32 布局的索引表
-            with open(self.index_table_path, 'r') as f:
-                index_table = json.load(f)
+        # 加载描述 fp32 布局的索引表
+        with open(self.index_table_path, 'r') as f:
+            index_table = json.load(f)
 
-            # 加载 ONNX 模型结构 (使用 self.onnx_model_path)
-            model = onnx.load_model(old_model, load_external_data=False)
+        model = onnx.load_model(old_model, load_external_data=False)
+        reconstructed_bin_filename = os.path.basename(self.reconstructed_fp32_bin_path)
 
-            # 这个 ONNX 模型将要链接的 .bin 文件名
-            reconstructed_bin_filename = os.path.basename(self.reconstructed_fp32_bin_path)
+        for tensor in model.graph.initializer:
+            if tensor.name in index_table:
+                tensor.ClearField('raw_data')
+                tensor.data_location = onnx.TensorProto.EXTERNAL
+                info = index_table[tensor.name]
+                del tensor.external_data[:]
+                keys = ["location", "offset", "length"]
+                values = [reconstructed_bin_filename, str(info['offset']), str(info['length'])]
 
-            for tensor in model.graph.initializer:
-                if tensor.name in index_table:
-                    # 清除可能存在的原始数据
-                    tensor.ClearField('raw_data')
-                    # 设置数据存储位置为外部
-                    tensor.data_location = onnx.TensorProto.EXTERNAL
-                    info = index_table[tensor.name]
-                    # 清空旧的外部数据链接
-                    del tensor.external_data[:]
-                    # 设置新的链接信息
-                    keys = ["location", "offset", "length"]
-                    values = [reconstructed_bin_filename, str(info['offset']), str(info['length'])]
+                for k, v in zip(keys, values):
+                    entry = tensor.external_data.add()
+                    entry.key = k
+                    entry.value = v
 
-                    for k, v in zip(keys, values):
-                        entry = tensor.external_data.add()
-                        entry.key = k
-                        entry.value = v
-
-            # 保存修改后的、链接到 fp32 权重的 ONNX 模型
-            onnx.save(model, new_model)
-
-        except Exception as e:
-            print(f"❌ 阶段 2 失败: {e}")
-            raise
+        onnx.save(model, new_model)
 
     @staticmethod
     def step3_reconstruct_fp32_bin_from_fp16(fp16_bin_path: str, output_fp32_bin_path: str):
@@ -139,10 +118,8 @@ class T2SModelConverter:
         fp16_array = np.fromfile(fp16_bin_path, dtype=np.float16)
         fp32_array = fp16_array.astype(np.float32)
         fp32_array.tofile(output_fp32_bin_path)
-        print(f"✅ 还原成功！")
 
     def run_full_process(self):
         self.step1_create_fp16_bin_with_key_mapping()
         self.step2_relink_onnx_for_fp32(self.stage_decoder_onnx_path, self.relinked_stage_decoder_path)
         self.step2_relink_onnx_for_fp32(self.first_stage_decoder_onnx_path, self.relinked_first_stage_decoder_path)
-        # print("🎉🎉🎉 T2S 模型转换全流程已成功完成！ 🎉🎉🎉")
