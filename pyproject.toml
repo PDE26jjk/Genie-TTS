@@ -5,7 +5,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gpt-sovits-onnx"
+name = "genie-tts"
 version = "1.0"
 authors = [
     { name = "High_Logic", email = "highlogic233@gmail.com" },
@@ -41,10 +41,10 @@ dependencies = [
 Homepage = "https://github.com/High-Logic/Genie"
 
 [tool.setuptools.packages.find]
-where = ["genie_cpu"]
+where = ["src"]
 
 [tool.setuptools.package-data]
-genie_cpu = [
+genie_tts = [
     "Data/v2/Keys/**/*",
     "Data/v2/Models/**/*"
 ]
