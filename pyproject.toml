@@ -35,6 +35,7 @@ dependencies = [
     "pyyaml",
     "rich",
     "pyaudio",
+    "huggingface_hub[hf_xet]",
 ]
 
 [project.urls]
