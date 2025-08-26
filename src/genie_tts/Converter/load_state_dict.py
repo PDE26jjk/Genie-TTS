@@ -1,5 +1,11 @@
+import sys
+import os
+
+sys.path.append(os.path.dirname(__file__))
+
 import torch
 from io import BytesIO
+import utils
 
 
 def load_sovits_model(pth_path: str, device: str = 'cpu'):

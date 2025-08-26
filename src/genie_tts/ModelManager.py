@@ -7,11 +7,11 @@ import onnxruntime
 from onnxruntime import InferenceSession
 from typing import Optional
 import numpy as np
-from importlib.resources import files
+# from importlib.resources import files
 from huggingface_hub import hf_hub_download
 
 from .Utils.Shared import context
-from .Utils.Constants import PACKAGE_NAME
+# from .Utils.Constants import PACKAGE_NAME
 from .Utils.Utils import LRUCacheDict
 
 logger = logging.getLogger(__name__)
@@ -49,14 +49,14 @@ def convert_bin_to_fp32(
 
 def download_model(filename: str, repo_id: str = 'High-Logic/Genie') -> Optional[str]:
     try:
-        package_root = files(PACKAGE_NAME)
-        model_dir = str(package_root / "Data")
-        os.makedirs(model_dir, exist_ok=True)
+        # package_root = files(PACKAGE_NAME)
+        # model_dir = str(package_root / "Data")
+        # os.makedirs(model_dir, exist_ok=True)
 
         model_path = hf_hub_download(
             repo_id=repo_id,
             filename=filename,
-            cache_dir=model_dir,
+            # cache_dir=model_dir,
         )
         return model_path
 
