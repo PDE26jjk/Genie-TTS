@@ -29,6 +29,7 @@ from .Audio.ReferenceAudio import ReferenceAudio
 from .Core.TTSPlayer import tts_player
 from .ModelManager import model_manager
 from .Utils.Shared import context
+from .Client import Client
 
 # A module-level private dictionary to store reference audio configurations.
 _reference_audios: dict[str, dict] = {}
@@ -135,33 +136,38 @@ async def tts_async(
         if parent_dir:
             os.makedirs(parent_dir, exist_ok=True)
 
-    # Create a queue for asynchronous audio chunk transfer
+    # 1. 创建 asyncio 队列和获取当前事件循环
     stream_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+    loop = asyncio.get_running_loop()
 
-    # Set the current TTS context
+    # 2. 定义回调函数，用于在线程和 asyncio 之间安全地传递数据
+    def tts_chunk_callback(chunk: Optional[bytes]):
+        """This callback is called from the TTS worker thread."""
+        loop.call_soon_threadsafe(stream_queue.put_nowait, chunk)
+
+    # 设置 TTS 上下文
     context.current_speaker = character_name
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=_reference_audios[character_name]['audio_path'],
         prompt_text=_reference_audios[character_name]['audio_text'],
     )
 
-    # Start the TTS session
+    # 3. 使用新的回调接口启动 TTS 会话
     tts_player.start_session(
         play=play,
         split=split_sentence,
         save_path=save_path,
-        stream_queue=stream_queue,
+        chunk_callback=tts_chunk_callback,
     )
 
-    # Feed text to the TTS engine
+    # 馈送文本并通知会话结束
     tts_player.feed(text)
     tts_player.end_session()
 
-    # Async iterator: continuously get data from the queue
+    # 4. 从队列中异步读取数据并产生
     while True:
         chunk = await stream_queue.get()
         if chunk is None:
-            # None indicates the end of the TTS stream
             break
         yield chunk
 
@@ -172,7 +178,6 @@ def tts(
         play: bool = False,
         split_sentence: bool = False,
         save_path: str | PathLike | None = None,
-        stream_queue: Optional[asyncio.Queue] = None
 ) -> None:
     """
     Synchronously generates speech from text.
@@ -186,7 +191,6 @@ def tts(
         play (bool, optional): If True, plays the audio. Defaults to False.
         split_sentence (bool, optional): If True, splits the text into sentences for synthesis. Defaults to False.
         save_path (str | PathLike | None, optional): If provided, saves the generated audio to this file path. Defaults to None.
-        stream_queue (Optional[asyncio.Queue], optional): An optional asyncio queue to stream audio chunks to. Defaults to None.
     """
     if character_name not in _reference_audios:
         logger.error("Please call 'set_reference_audio' first to set the reference audio.")
@@ -208,7 +212,6 @@ def tts(
         play=play,
         split=split_sentence,
         save_path=save_path,
-        stream_queue=stream_queue,
     )
     tts_player.feed(text)
     tts_player.end_session()
@@ -261,3 +264,11 @@ def clear_reference_audio_cache() -> None:
     Clears the cache of reference audio data.
     """
     ReferenceAudio.clear_cache()
+
+
+def launch_command_line_client() -> None:
+    """
+    Launch the command-line client.
+    """
+    cmd_client: Client = Client()
+    cmd_client.run()

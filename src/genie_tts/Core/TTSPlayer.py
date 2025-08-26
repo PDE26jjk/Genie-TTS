@@ -1,13 +1,14 @@
+# 文件: .../Core/TTSPlayer.py
+
 import queue
 import os
-import asyncio
 import threading
 import time
 
 import numpy as np
 import wave
-from typing import Optional, List
-import pyaudio  # <-- 已替换
+from typing import Optional, List, Callable
+import pyaudio
 import logging
 
 from ..Japanese.Split import split_japanese_text
@@ -40,13 +41,11 @@ class TTSPlayer:
         self._play: bool = False
         self._current_save_path: Optional[str] = None
         self._session_audio_chunks: List[np.ndarray] = []
-        self._stream_queue: Optional[asyncio.Queue] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-
         self._start_time: Optional[float] = None
         self._end_time: Optional[float] = None
-
         self._split: bool = False
+
+        self._chunk_callback: Optional[Callable[[Optional[bytes]], None]] = None
 
     @staticmethod
     def _preprocess_for_playback(audio_float: np.ndarray) -> bytes:
@@ -54,7 +53,7 @@ class TTSPlayer:
         return audio_int16.tobytes()
 
     def _tts_worker_loop(self):
-        """从文本队列取句子，生成音频，放入音频队列。"""
+        """从文本队列取句子，生成音频，并通过回调函数或音频队列分发。"""
         while not self._stop_event.is_set():
             try:
                 sentence = self._text_queue.get(timeout=1)
@@ -67,6 +66,11 @@ class TTSPlayer:
                 if sentence is STREAM_END:
                     if self._current_save_path and self._session_audio_chunks:
                         self._save_session_audio()
+
+                    # 在TTS工作线程完成时，通过回调发送结束信号
+                    if self._chunk_callback:
+                        self._chunk_callback(None)
+
                     self._tts_done_event.set()
                     continue
 
@@ -88,17 +92,25 @@ class TTSPlayer:
                 if audio_chunk is not None:
                     if self._end_time is None:
                         self._end_time = time.time()
-                        duration: float = self._end_time - self._start_time
-                        logger.info(f"First packet latency: {duration:.3f} seconds.")
+                        if self._start_time:
+                            duration: float = self._end_time - self._start_time
+                            logger.info(f"First packet latency: {duration:.3f} seconds.")
+
                     if self._play:
                         self._audio_queue.put(audio_chunk)
                     if self._current_save_path:
                         self._session_audio_chunks.append(audio_chunk)
-                    if self._stream_queue and self._loop:
+
+                    # 使用回调函数处理流式数据
+                    if self._chunk_callback:
                         audio_data = self._preprocess_for_playback(audio_chunk)
-                        self._loop.call_soon_threadsafe(self._stream_queue.put_nowait, audio_data)
+                        self._chunk_callback(audio_data)
+
             except Exception as e:
                 logger.error(f"A critical error occurred while processing the TTS task: {e}", exc_info=True)
+                # 发生错误时，也要确保发送结束信号
+                if self._chunk_callback:
+                    self._chunk_callback(None)
                 self._tts_done_event.set()
 
     def _playback_worker_loop(self):
@@ -106,42 +118,34 @@ class TTSPlayer:
         stream = None
         try:
             p = pyaudio.PyAudio()
-
             while not self._stop_event.is_set():
                 try:
-                    # 阻塞式等待音频块。
                     audio_chunk = self._audio_queue.get(timeout=1)
-                    if audio_chunk is None:  # 收到“毒丸”，准备退出线程
+                    if audio_chunk is None:
                         break
-
-                    # 如果流尚未打开，则在收到第一个音频块时创建它。
                     if stream is None:
                         stream = p.open(format=p.get_format_from_width(self.bytes_per_sample),
                                         channels=self.channels,
                                         rate=self.sample_rate,
                                         output=True)
-
-                    # 将处理好的音频字节写入流。这是一个阻塞操作。
                     audio_data = self._preprocess_for_playback(audio_chunk)
                     stream.write(audio_data)
-
                 except queue.Empty:
                     if stream is not None:
                         stream.stop_stream()
                         stream.close()
                         stream = None
-                    continue
                 except Exception as e:
                     logger.error(f"A critical error occurred while playing audio: {e}", exc_info=True)
-                    if stream is not None:
+                    if stream:
                         stream.stop_stream()
                         stream.close()
                         stream = None
         finally:
-            if stream is not None:
+            if stream:
                 stream.stop_stream()
                 stream.close()
-            if p is not None:
+            if p:
                 p.terminate()
 
     def _save_session_audio(self):
@@ -163,21 +167,11 @@ class TTSPlayer:
                       play: bool = False,
                       split: bool = False,
                       save_path: Optional[str] = None,
-                      stream_queue: Optional[asyncio.Queue] = None
+                      chunk_callback: Optional[Callable[[Optional[bytes]], None]] = None
                       ):
         with self._api_lock:
             self._tts_done_event.clear()
-
-            if stream_queue:
-                try:
-                    self._loop = asyncio.get_running_loop()
-                    self._stream_queue = stream_queue
-                except RuntimeError:
-                    logger.warning(
-                        "The `start_session` contains `stream_queue` but is not called within an asyncio event loop. Streaming will be ignored."
-                    )
-                    self._loop = None
-
+            self._chunk_callback = chunk_callback
             self._stop_event.clear()
 
             if self._tts_worker is None or not self._tts_worker.is_alive():
@@ -216,30 +210,21 @@ class TTSPlayer:
         with self._api_lock:
             self._text_queue.put(STREAM_END)
 
-            if self._stream_queue and self._loop:
-                self._loop.call_soon_threadsafe(self._stream_queue.put_nowait, None)
-
     def stop(self):
         with self._api_lock:
             if self._tts_worker is None and self._playback_worker is None:
                 return
             if self._stop_event.is_set():
                 return
-
             tts_client.stop_event.set()
             self._stop_event.set()
             self._tts_done_event.set()
-
-            # 发送毒丸唤醒可能在 get() 中阻塞的线程
             self._text_queue.put(None)
             self._audio_queue.put(None)
-
             if self._tts_worker and self._tts_worker.is_alive():
                 self._tts_worker.join()
             if self._playback_worker and self._playback_worker.is_alive():
                 self._playback_worker.join()
-
-            # 线程结束后，重置它们的状态，以便下次可以重新启动
             self._tts_worker = None
             self._playback_worker = None
 
