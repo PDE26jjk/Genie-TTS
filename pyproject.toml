@@ -41,10 +41,10 @@ dependencies = [
 Homepage = "https://github.com/High-Logic/Genie"
 
 [tool.setuptools.packages.find]
-where = ["genie-cpu"]
+where = ["genie_cpu"]
 
 [tool.setuptools.package-data]
-genie-cpu = [
+genie_cpu = [
     "Data/v2/Keys/**/*",
     "Data/v2/Models/**/*"
 ]
