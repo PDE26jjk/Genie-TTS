@@ -36,6 +36,11 @@ class GENIE:
         if self.stop_event.is_set():
             return None
 
+        eos_indices = np.where(semantic_tokens >= 1024)  # 剔除不合法的元素，例如 EOS Token。
+        if len(eos_indices[0]) > 0:
+            first_eos_index = eos_indices[-1][0]
+            semantic_tokens = semantic_tokens[..., :first_eos_index]
+
         audio_32k = np.expand_dims(prompt_audio.audio_32k, axis=0)  # 增加 Batch_Size 维度
         return vocoder.run(None, {
             "text_seq": text_seq,

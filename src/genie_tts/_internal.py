@@ -176,7 +176,7 @@ def tts(
         character_name: str,
         text: str,
         play: bool = False,
-        split_sentence: bool = False,
+        split_sentence: bool = True,
         save_path: str | PathLike | None = None,
 ) -> None:
     """
@@ -188,8 +188,8 @@ def tts(
     Args:
         character_name (str): The name of the character to use for synthesis.
         text (str): The text to be synthesized into speech.
-        play (bool, optional): If True, plays the audio. Defaults to False.
-        split_sentence (bool, optional): If True, splits the text into sentences for synthesis. Defaults to False.
+        play (bool, optional): If True, plays the audio.
+        split_sentence (bool, optional): If True, splits the text into sentences for synthesis.
         save_path (str | PathLike | None, optional): If provided, saves the generated audio to this file path. Defaults to None.
     """
     if character_name not in _reference_audios:
