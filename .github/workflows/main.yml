@@ -3,10 +3,13 @@
 name: Build Wheels
 
 on:
+  # 触发器1：当一个 v* 格式的 tag 被推送到仓库时自动触发
   push:
     tags:
-      - 'v*'        # 当 push 的 tag 以 v 开头时触发
-  workflow_dispatch:  # 支持手动触发
+      - 'v*'
+
+  # 触发器2：增加一个手动触发开关
+  workflow_dispatch:
 
 jobs:
   build_wheels:
@@ -14,17 +17,22 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest] # 建议也加上 macOS
+        os: [windows-latest]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # 建议使用最新的 v4
+        uses: actions/checkout@v4
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.16.5 # 直接使用官方的 Action 更方便
+        uses: pypa/cibuildwheel@v2.16.5
+        env:
+          # 在 Windows 上只构建 64-bit (AMD64) wheels
+          CIBW_ARCHS_WINDOWS: "AMD64"
+          # 注意：这个环境变量只在 matrix.os 是 windows-latest 的 job 中生效
+          # 在 Ubuntu 和 macOS 上，它会被忽略，并使用它们各自的默认架构
 
       - name: Store the distribution packages
-        uses: actions/upload-artifact@v4 # 建议使用最新的 v4
+        uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
