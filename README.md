@@ -27,6 +27,10 @@ TTS 推理、ONNX 模型转换、API Server 等核心功能，旨在提供更极
 - **✅ 支持模型版本:** GPT-SoVITS V2
 - **✅ 支持语言:** 日语 (Japanese)
 
+## 🔊 效果演示
+
+> ./assets/Mika.wav
+
 ## 🚀 性能优势
 
 GENIE 对原版模型进行了高度优化，在 CPU 环境下展现了卓越的性能。
