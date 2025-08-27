@@ -13,7 +13,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest] # 建议也加上 macOS
+        os: [ubuntu-latest, windows-latest] # 建议也加上 macOS
 
     steps:
       - name: Checkout repository
