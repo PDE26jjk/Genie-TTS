@@ -5,6 +5,11 @@ import os
 # Note: If this line is not set, Genie will automatically download the model from Huggingface.
 os.environ['HUBERT_MODEL_PATH'] = r"<PATH_TO_HUBERT_ONNX_MODEL>"
 
+# (Optional) We recommend manually specifying the dictionary path for pyopenjtalk.
+# You can download the dictionary here: https://huggingface.co/High-Logic/Genie
+# Note: If this line is not set, pyopenjtalk will automatically download the dictionary.
+os.environ['OPEN_JTALK_DICT_DIR'] = r"<PATH_TO_OPEN_JTALK_DICT>"
+
 # (Optional) You can set the number of cached character models and reference audios.
 os.environ['Max_Cached_Character_Models'] = '3'
 os.environ['Max_Cached_Reference_Audio'] = '10'
