@@ -138,4 +138,27 @@ genie.start_server(
 
 > 关于服务器的请求格式、接口详情等信息，请参考我们的 [API 服务器使用教程](./Tutorial/English/API%20Server%20Tutorial.py)。
 
+## ⌨️ 启动命令行客户端
+
+为了方便快速测试和交互式使用，GENIE 提供了一个简单的命令行客户端。
+
+```python
+import genie_tts as genie
+
+# 启动命令行客户端
+genie.launch_command_line_client()
+```
+
+## 📝 未来计划 (Roadmap)
+
+- [ ] **🌐 语言扩展**
+    - [ ] 增加对 **中文** 的支持。
+
+- [ ] **🚀 模型兼容性**
+    - [ ] 增加对 `V2Proplus`、`V3`、`V4` 等更多模型版本的支持。
+
+- [ ] **📦 便捷部署**
+    - [ ] 发布 **Docker 镜像**。
+    - [ ] 提供开箱即用的 **Windows / Linux 整合包**。
+
 ---

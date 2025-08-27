@@ -121,4 +121,31 @@ genie.start_server(
 > For server request formats, endpoint details, and usage instructions, please refer to
 > our [API Server Tutorial](./Tutorial/English/API%20Server%20Tutorial.py).
 
+
 ---
+
+## ⌨️ Launch Command-Line Client
+
+**GENIE** provides a simple command-line client.
+
+```python
+import genie_tts as genie
+
+# Launch command-line client
+genie.launch_command_line_client()
+```
+
+## 📝 Roadmap
+
+* [ ] **🌐 Language Expansion**
+
+    * [ ] Add support for **Chinese**.
+
+* [ ] **🚀 Model Compatibility**
+
+    * [ ] Add support for more model versions such as `V2Proplus`, `V3`, and `V4`.
+
+* [ ] **📦 Easy Deployment**
+
+    * [ ] Release a **Docker image**.
+    * [ ] Provide ready-to-use **Windows / Linux bundles**.
