@@ -22,6 +22,7 @@ onnxruntime.set_default_logger_severity(3)
 
 # 导入剩余库。
 
+import json
 import asyncio
 from typing import AsyncIterator, Optional
 
@@ -30,6 +31,7 @@ from .Core.TTSPlayer import tts_player
 from .ModelManager import model_manager
 from .Utils.Shared import context
 from .Client import Client
+from .PredefinedCharacter import download_predefined_character_model
 
 # A module-level private dictionary to store reference audio configurations.
 _reference_audios: dict[str, dict] = {}
@@ -70,7 +72,7 @@ def unload_character(
 
 def set_reference_audio(
         character_name: str,
-        audio_path: str,
+        audio_path: str | PathLike,
         audio_text: str,
 ) -> None:
     """
@@ -80,9 +82,11 @@ def set_reference_audio(
 
     Args:
         character_name (str): The name of the character.
-        audio_path (str): The file path to the reference audio (e.g., a WAV file).
+        audio_path (str | PathLike): The file path to the reference audio (e.g., a WAV file).
         audio_text (str): The transcript of the reference audio.
     """
+    audio_path: str = os.fspath(audio_path)
+
     # 检查文件后缀是否支持
     ext = os.path.splitext(audio_path)[1].lower()
     if ext not in SUPPORTED_AUDIO_EXTS:
@@ -272,3 +276,30 @@ def launch_command_line_client() -> None:
     """
     cmd_client: Client = Client()
     cmd_client.run()
+
+
+def load_predefined_character(character_name: str) -> None:
+    """
+    Download and load a predefined character model for TTS inference.
+    """
+    character_name_list: list[str] = ['misono_mika']
+    if character_name not in character_name_list:
+        logger.error(f"No predefined character model found for {character_name}")
+
+    save_path: str = download_predefined_character_model(character_name)
+    model_manager.load_character(
+        character_name=character_name,
+        model_dir=save_path,
+    )
+
+    audio_path = os.path.join(save_path, "prompt.wav")
+    with open(os.path.join(save_path, "prompt_wav.json"), "r", encoding="utf-8") as f:
+        audio_text = json.load(f)["Normal"]["text"]
+    _reference_audios[character_name] = {
+        'audio_path': audio_path,
+        'audio_text': audio_text,
+    }
+    context.current_prompt_audio = ReferenceAudio(
+        prompt_wav=audio_path,
+        prompt_text=audio_text,
+    )

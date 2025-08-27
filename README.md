@@ -63,6 +63,28 @@ GENIE 对原版模型进行了高度优化，在 CPU 环境下展现了卓越的
 pip install genie-tts
 ```
 
+### ⚡️ 快速体验 (Quick Tryout)
+
+手上还没有 GPT-SoVITS 模型？没关系！
+
+为了让您能够轻松上手，GENIE 内置了预设的说话人角色。无需任何模型文件，只需运行下面的代码，即可立即听到效果：
+
+```python
+import genie_tts as genie
+import time
+
+# 首次运行时会自动从网络下载所需文件
+genie.load_predefined_character('misono_mika')
+
+genie.tts(
+    character_name='misono_mika',
+    text='どうしようかな……やっぱりやりたいかも……！',
+    play=True,  # 直接播放生成的音频
+)
+
+time.sleep(10)  # 由于音频播放是异步的，这里添加一个延时以确保音频能够完整播放完毕。
+```
+
 ### 🔗 依赖项下载
 
 对于中国大陆用户，我们强烈建议您手动下载必要的依赖项，并将模型与字典文件放置在某个本地位置。
@@ -74,7 +96,7 @@ pip install genie-tts
 
 下载后，请通过环境变量 (os.environ) 指定文件路径。
 
-### 🎤 使用示例 (Usage)
+### 🎤 语音合成最佳实践
 
 下面是一个简单的 TTS 推理示例：
 

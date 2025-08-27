@@ -1,9 +1,19 @@
 <div align="center">
+<pre>
+██████╗  ███████╗███╗   ██╗██╗███████╗
+██╔════╝ ██╔════╝████╗  ██║██║██╔════╝
+██║  ███╗█████╗  ██╔██╗ ██║██║█████╗  
+██║   ██║██╔══╝  ██║╚██╗██║██║██╔══╝  
+╚██████╔╝███████╗██║ ╚████║██║███████╗
+ ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚═╝╚══════╝
+</pre>
+</div>
 
-# 🔮 GENIE: Lightweight Inference Engine for [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)
+<div align="center">
 
-**A high-performance, lightweight inference engine specifically designed
-for [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)**
+# 🔮 GENIE: [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) Lightweight Inference Engine
+
+**A high-performance, lightweight inference engine specifically designed for GPT-SoVITS**
 
 [简体中文](./README.md) | [English](./README_en.md)
 
@@ -12,15 +22,17 @@ for [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)**
 ---
 
 **GENIE** is a lightweight inference engine built on the open-source TTS
-project [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS). It integrates core features such as TTS inference, ONNX
-model conversion, and an API server, aiming to deliver maximum performance and a smooth user experience.
+project [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS). It integrates TTS inference, ONNX model conversion, API
+server, and other core features, aiming to provide ultimate performance and convenience.
 
 * **✅ Supported Model Version:** GPT-SoVITS V2
 * **✅ Supported Language:** Japanese
 
+---
+
 ## 🚀 Performance Advantages
 
-GENIE is highly optimized compared to the original model, demonstrating excellent performance on CPU environments.
+GENIE optimizes the original model for outstanding CPU performance.
 
 | Feature                     |  🔮 GENIE   | Official PyTorch Model | Official ONNX Model |
 |:----------------------------|:-----------:|:----------------------:|:-------------------:|
@@ -28,18 +40,17 @@ GENIE is highly optimized compared to the original model, demonstrating excellen
 | **Runtime Size**            | **\~200MB** |      \~several GB      |  Similar to GENIE   |
 | **Model Size**              | **\~230MB** |    Similar to GENIE    |       \~750MB       |
 
-> 📝 **Note:** Since GPU inference does not show a significant latency improvement over CPU for first-inference, we
-> currently only provide a CPU version to ensure the best out-of-the-box experience.
+> 📝 **Note:** Since GPU inference latency does not significantly improve over CPU for the first packet, we currently
+> only provide a CPU version to ensure the best out-of-the-box experience.
 >
-> 📝 **Latency Test Details:** All latency data is measured using a test set of 100 Japanese sentences (\~20 characters
-> each), with averages calculated. Tests were conducted on a CPU i7-12620H.
+> 📝 **Latency Test Info:** All latency data is based on a test set of 100 Japanese sentences (\~20 characters each),
+> averaged. Tested on CPU i7-12620H.
 
 ---
 
-## 🏁 Quick Start
+## 🏁 QuickStart
 
-> **⚠️ Important:** It is recommended to run GENIE in **Administrator mode** to avoid potential severe performance
-> drops.
+> **⚠️ Important:** It is recommended to run GENIE in **Administrator mode** to avoid potential performance degradation.
 
 ### 📦 Installation
 
@@ -49,103 +60,130 @@ Install via pip:
 pip install genie-tts
 ```
 
-### 🎤 Usage Example
+### ⚡️ Quick Tryout
 
-Here’s a simple TTS inference example:
+No GPT-SoVITS model yet? No problem!
+GENIE includes predefined speaker characters for immediate use without any model
+files. Run the code below to hear it in action:
+
+```python
+import genie_tts as genie
+import time
+
+# Automatically downloads required files on first run
+genie.load_predefined_character('misono_mika')
+
+genie.tts(
+    character_name='misono_mika',
+    text='どうしようかな……やっぱりやりたいかも……！',
+    play=True,  # Play the generated audio directly
+)
+
+time.sleep(10)  # Add delay to ensure audio playback completes
+```
+
+### 🎤 TTS Best Practices
+
+A simple TTS inference example:
 
 ```python
 import genie_tts as genie
 
-# Step 1: Load the character voice model
+# Step 1: Load character voice model
 genie.load_character(
     character_name='<CHARACTER_NAME>',  # Replace with your character name
-    onnx_model_dir=r"<PATH_TO_CHARACTER_ONNX_MODEL_DIR>",  # Replace with folder path containing ONNX models
+    onnx_model_dir=r"<PATH_TO_CHARACTER_ONNX_MODEL_DIR>",  # Folder containing ONNX model
 )
 
 # Step 2: Set reference audio (for emotion and intonation cloning)
 genie.set_reference_audio(
-    character_name='<CHARACTER_NAME>',  # Must match the loaded character name
-    audio_path=r"<PATH_TO_REFERENCE_AUDIO>",  # Replace with your reference audio file path
-    audio_text="<REFERENCE_AUDIO_TEXT>",  # Replace with the text corresponding to the reference audio
+    character_name='<CHARACTER_NAME>',  # Must match loaded character name
+    audio_path=r"<PATH_TO_REFERENCE_AUDIO>",  # Path to reference audio
+    audio_text="<REFERENCE_AUDIO_TEXT>",  # Corresponding text
 )
 
-# Step 3: Perform TTS inference and generate audio
+# Step 3: Run TTS inference and generate audio
 genie.tts(
-    character_name='<CHARACTER_NAME>',  # Must match the loaded character name
-    text="<TEXT_TO_SYNTHESIZE>",  # Replace with the text you want to synthesize
-    play=True,  # Set to True to play the generated audio directly
-    save_path="<OUTPUT_AUDIO_PATH>",  # Replace with desired output path
+    character_name='<CHARACTER_NAME>',  # Must match loaded character
+    text="<TEXT_TO_SYNTHESIZE>",  # Text to synthesize
+    play=True,  # Play audio directly
+    save_path="<OUTPUT_AUDIO_PATH>",  # Output audio file path
 )
 
 print("🎉 Audio generation complete!")
 ```
 
+---
+
 ## 🔧 Model Conversion
 
-If you need to convert the original GPT-SoVITS model to a format compatible with GENIE, first ensure that `torch` is
-installed:
+To convert original GPT-SoVITS models for GENIE, ensure `torch` is installed:
 
 ```bash
 pip install torch
 ```
 
-Then, you can use the built-in conversion tool.
+Use the built-in conversion tool:
 
-> **Tip:** The `convert_to_onnx` function currently only supports V2 models.
+> **Tip:** `convert_to_onnx` currently supports only V2 models.
 
 ```python
 import genie_tts as genie
 
 genie.convert_to_onnx(
-    torch_pth_path=r"<PATH_TO_YOUR_.PTH_MODEL>",  # Replace with your .pth model path
-    torch_ckpt_path=r"<PATH_TO_YOUR_.CKPT_CHECKPOINT>",  # Replace with your .ckpt checkpoint path
-    output_dir=r"<OUTPUT_ONNX_MODEL_DIR>"  # Specify directory to save ONNX model
+    torch_pth_path=r"<YOUR .PTH MODEL FILE>",  # Replace with your .pth file
+    torch_ckpt_path=r"<YOUR .CKPT CHECKPOINT FILE>",  # Replace with your .ckpt file
+    output_dir=r"<ONNX MODEL OUTPUT DIRECTORY>"  # Directory to save ONNX model
 )
 ```
-
-## 🌐 Start FastAPI Server
-
-GENIE comes with a simple built-in FastAPI server.
-
-```python
-import genie_tts as genie
-
-# Start the server
-genie.start_server(
-    host="0.0.0.0",  # Host address to bind
-    port=8000,  # Port to listen on
-    workers=1  # Number of worker processes
-)
-```
-
-> For server request formats, endpoint details, and usage instructions, please refer to
-> our [API Server Tutorial](./Tutorial/English/API%20Server%20Tutorial.py).
-
 
 ---
 
-## ⌨️ Launch Command-Line Client
+## 🌐 Launch FastAPI Server
 
-**GENIE** provides a simple command-line client.
+GENIE includes a lightweight FastAPI server:
 
 ```python
 import genie_tts as genie
 
-# Launch command-line client
+# Start server
+genie.start_server(
+    host="0.0.0.0",  # Host address
+    port=8000,  # Port
+    workers=1  # Number of workers
+)
+```
+
+> For request formats and API details, see our [API Server Tutorial](./Tutorial/English/API%20Server%20Tutorial.py).
+
+---
+
+## ⌨️ Launch CMD Client
+
+GENIE provides a simple command-line client for quick testing and interactive use:
+
+```python
+import genie_tts as genie
+
+# Launch CLI client
 genie.launch_command_line_client()
 ```
+
+---
 
 ## 📝 Roadmap
 
 * [ ] **🌐 Language Expansion**
 
-    * [ ] Add support for **Chinese**.
+    * [ ] Add support for **Chinese** and **English**.
 
 * [ ] **🚀 Model Compatibility**
 
-    * [ ] Add support for more model versions such as `V2Proplus`, `V3`, and `V4`.
+    * [ ] Support for `V2Proplus`, `V3`, `V4`, and more.
 
 * [ ] **📦 Easy Deployment**
 
-    * [ ] Release a **Docker image**.
-    * [ ] Provide ready-to-use **Windows / Linux bundles**.
+    * [ ] Release **Docker images**.
+    * [ ] Provide out-of-the-box **Windows / Linux bundles**.
+
+---
