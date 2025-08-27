@@ -11,8 +11,6 @@
 
 <div align="center">
 
-<div align="center">
-
 # 🔮 GENIE: Lightweight Inference Engine for [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)
 
 **A high-performance, lightweight inference engine specifically designed
