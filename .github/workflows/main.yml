@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2
+        uses: pypa/cibuildwheel@v2.16.5
         env:
           # 在 Windows 上只构建 64-bit (AMD64) wheels
           CIBW_ARCHS_WINDOWS: "AMD64"
