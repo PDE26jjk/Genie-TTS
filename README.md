@@ -29,7 +29,9 @@ TTS 推理、ONNX 模型转换、API Server 等核心功能，旨在提供更极
 
 ## 🔊 效果演示
 
-* [▶️ Misono Mika](assets/Mika.wav)
+<audio controls>
+  <source src="assets/Mika.wav" type="audio/wav">
+</audio>
 
 ## 🚀 性能优势
 
