@@ -1,8 +1,19 @@
 <div align="center">
+<pre style="font-family: 'Courier New', monospace; font-size: 16px; color: #8B5CF6; margin: 0; padding: 0; text-shadow: 0 0 10px #8B5CF6, 0 0 20px rgba(139, 92, 246, 0.5); line-height: 1.2; transform: skew(-1deg, 0deg); display: block;">
+    ██████╗ ███████╗███╗   ██╗██╗███████╗
+    ██╔════╝ ██╔════╝████╗  ██║██║██╔════╝
+    ██║  ███╗█████╗  ██╔██╗ ██║██║█████╗
+    ██║   ██║██╔══╝  ██║╚██╗██║██║██╔══╝
+    ╚██████╔╝███████╗██║ ╚████║██║███████╗
+     ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚═╝╚══════╝
+</pre>
+</div>
+
+<div align="center">
 
 # 🔮 GENIE: [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 轻量级推理引擎
 
-**专为 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 设计的高性能、轻量级的推理引擎**
+**专为 GPT-SoVITS 设计的高性能、轻量级的推理引擎**
 
 [简体中文](./README.md) | [English](./README_en.md)
 
