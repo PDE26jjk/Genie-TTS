@@ -27,9 +27,13 @@ TTS 推理、ONNX 模型转换、API Server 等核心功能，旨在提供更极
 - **✅ 支持模型版本:** GPT-SoVITS V2
 - **✅ 支持语言:** 日语 (Japanese)
 
+---
+
 ## 🎬 项目介绍视频
 
 - **[➡️ 点击查看 Bilibili 演示视频](https://www.bilibili.com/video/BV1d2hHzJEz9)**
+
+---
 
 ## 🚀 性能优势
 
