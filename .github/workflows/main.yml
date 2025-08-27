@@ -5,7 +5,8 @@ name: Build Wheels
 on:
   push:
     tags:
-      - 'v*' # 当一个 v 开头的 tag 被推送到仓库时触发
+      - 'v*'        # 当 push 的 tag 以 v 开头时触发
+  workflow_dispatch:  # 支持手动触发
 
 jobs:
   build_wheels:
