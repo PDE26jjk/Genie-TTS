@@ -60,6 +60,12 @@ Install via pip:
 pip install genie-tts
 ```
 
+> 📝 **备注:** You may encounter an installation failure when trying to install pyopenjtalk. This is because pyopenjtalk
+> is a library that includes C extensions, and the publisher does not currently provide pre-compiled binary packages (
+> wheels).
+> For Windows users, this requires installing Visual Studio Build Tools. Specifically, you must select the "Desktop
+> development with C++" workload during the installation process.
+
 ### ⚡️ Quick Tryout
 
 No GPT-SoVITS model yet? No problem!
