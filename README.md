@@ -30,6 +30,12 @@ server, and other core features, aiming to provide ultimate performance and conv
 
 ---
 
+## 🎬 Demo Video
+
+- **[➡️ Watch the demo video (Chinese)](https://www.bilibili.com/video/BV1d2hHzJEz9)**
+
+---
+
 ## 🚀 Performance Advantages
 
 GENIE optimizes the original model for outstanding CPU performance.
