@@ -65,7 +65,9 @@ pip install genie-tts
 
 > 📝 **备注:** 当您尝试安装 pyopenjtalk 时，可能会遇到安装失败的问题。这是因为 pyopenjtalk 是一个包含 C
 > 语言扩展模块的库，而其发布者目前没有提供预编译的二进制包 (wheels)。
-> 对于 Windows 用户，这意味着您必须安装 Visual Studio Build Tools，并确保在安装时勾选了 “使用 C++ 的桌面开发” 工作负载。
+> 对于 Windows
+> 用户，这意味着您必须安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+> ，并确保在安装时勾选了 “使用 C++ 的桌面开发” 工作负载。
 
 ### ⚡️ 快速体验 (Quick Tryout)
 
