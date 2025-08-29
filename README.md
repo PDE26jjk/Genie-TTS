@@ -50,7 +50,7 @@ GENIE optimizes the original model for outstanding CPU performance.
 > only provide a CPU version to ensure the best out-of-the-box experience.
 >
 > 📝 **Latency Test Info:** All latency data is based on a test set of 100 Japanese sentences (\~20 characters each),
-> averaged. Tested on CPU i7-12620H.
+> averaged. Tested on CPU i7-13620H.
 
 ---
 
