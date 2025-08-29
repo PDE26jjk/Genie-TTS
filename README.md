@@ -13,7 +13,7 @@
 
 # 🔮 GENIE: [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) Lightweight Inference Engine
 
-**A high-performance, lightweight inference engine specifically designed for GPT-SoVITS**
+**Experience near-instantaneous speech synthesis on your CPU**
 
 [简体中文](./README_zh.md) | [English](./README.md)
 
