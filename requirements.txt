@@ -11,4 +11,3 @@ huggingface_hub[hf_xet]
 fastapi
 uvicorn[standard]
 pydantic
-genie-tts
