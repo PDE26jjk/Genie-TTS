@@ -24,7 +24,7 @@ onnxruntime.set_default_logger_severity(3)
 
 import json
 import asyncio
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, Union
 
 from .Audio.ReferenceAudio import ReferenceAudio
 from .Core.TTSPlayer import tts_player
@@ -40,7 +40,7 @@ SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
 
 def load_character(
         character_name: str,
-        onnx_model_dir: str | PathLike,
+        onnx_model_dir: Union[str, PathLike],
 ) -> None:
     """
     Loads a character model from an ONNX model directory.
@@ -72,7 +72,7 @@ def unload_character(
 
 def set_reference_audio(
         character_name: str,
-        audio_path: str | PathLike,
+        audio_path: Union[str, PathLike],
         audio_text: str,
 ) -> None:
     """
@@ -110,7 +110,7 @@ async def tts_async(
         text: str,
         play: bool = False,
         split_sentence: bool = False,
-        save_path: str | PathLike | None = None,
+        save_path: Union[str, PathLike, None] = None,
 ) -> AsyncIterator[bytes]:
     """
     Asynchronously generates speech from text and yields audio chunks.
@@ -141,7 +141,7 @@ async def tts_async(
             os.makedirs(parent_dir, exist_ok=True)
 
     # 1. 创建 asyncio 队列和获取当前事件循环
-    stream_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+    stream_queue: asyncio.Queue[Union[bytes, None]] = asyncio.Queue()
     loop = asyncio.get_running_loop()
 
     # 2. 定义回调函数，用于在线程和 asyncio 之间安全地传递数据
@@ -181,7 +181,7 @@ def tts(
         text: str,
         play: bool = False,
         split_sentence: bool = True,
-        save_path: str | PathLike | None = None,
+        save_path: Union[str, PathLike, None] = None,
 ) -> None:
     """
     Synchronously generates speech from text.
@@ -230,9 +230,9 @@ def stop() -> None:
 
 
 def convert_to_onnx(
-        torch_ckpt_path: str | PathLike,
-        torch_pth_path: str | PathLike,
-        output_dir: str | PathLike
+        torch_ckpt_path: Union[str, PathLike],
+        torch_pth_path: Union[str, PathLike],
+        output_dir: Union[str, PathLike],
 ) -> None:
     """
     Converts PyTorch model checkpoints to the ONNX format.

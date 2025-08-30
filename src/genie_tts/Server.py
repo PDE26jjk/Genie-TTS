@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import AsyncIterator, Optional, Callable
+from typing import AsyncIterator, Optional, Callable, Union
 import logging
 
 import uvicorn
@@ -119,7 +119,7 @@ async def tts_endpoint(payload: TTSPayload):
         raise HTTPException(status_code=404, detail="Character not found or reference audio not set.")
 
     loop = asyncio.get_running_loop()
-    stream_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+    stream_queue: asyncio.Queue[Union[bytes, None]] = asyncio.Queue()
 
     def tts_chunk_callback(chunk: Optional[bytes]):
         loop.call_soon_threadsafe(stream_queue.put_nowait, chunk)
