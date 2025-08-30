@@ -5,7 +5,7 @@ A simple guide to set up the Genie TTS Docker container with models on your NAS 
 ## Steps to Deploy
 
 1. **Download the Models**
-   Download the required models from [Hugging Face](https://huggingface.co/).
+   Download the required models from [Hugging Face](https://huggingface.co/High-Logic/Genie).
 
 2. **Build the Docker Image**
    Build the Docker image locally:

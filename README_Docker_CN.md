@@ -5,7 +5,7 @@
 ## 部署步骤
 
 1. **下载模型**
-   从 [Hugging Face](https://huggingface.co/) 下载所需模型。
+   从 [Hugging Face](https://huggingface.co/High-Logic/Genie) 下载所需模型。
 
 2. **构建 Docker 镜像**
    在本地构建 Docker 镜像：
