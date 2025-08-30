@@ -27,6 +27,7 @@ server, and other core features, aiming to provide ultimate performance and conv
 
 * **✅ Supported Model Version:** GPT-SoVITS V2
 * **✅ Supported Language:** Japanese
+* **✅ Supported Python Version:** >= 3.9
 
 ---
 
