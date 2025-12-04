@@ -117,19 +117,32 @@ class TTSPlayer:
         p = None
         stream = None
         try:
-            p = pyaudio.PyAudio()
             while not self._stop_event.is_set():
                 try:
                     audio_chunk = self._audio_queue.get(timeout=1)
                     if audio_chunk is None:
                         break
+
+                    if p is None:
+                        try:
+                            p = pyaudio.PyAudio()
+                        except Exception as e:
+                            logger.warning(f"Failed to initialize PyAudio: {e}. Audio playback will be skipped.")
+                            continue
+
                     if stream is None:
-                        stream = p.open(format=p.get_format_from_width(self.bytes_per_sample),
-                                        channels=self.channels,
-                                        rate=self.sample_rate,
-                                        output=True)
-                    audio_data = self._preprocess_for_playback(audio_chunk)
-                    stream.write(audio_data)
+                        try:
+                            stream = p.open(format=p.get_format_from_width(self.bytes_per_sample),
+                                            channels=self.channels,
+                                            rate=self.sample_rate,
+                                            output=True)
+                        except Exception as e:
+                            logger.warning(f"Failed to open audio stream: {e}. Audio playback will be skipped.")
+                            continue
+
+                    if stream:
+                        audio_data = self._preprocess_for_playback(audio_chunk)
+                        stream.write(audio_data)
                 except queue.Empty:
                     if stream is not None:
                         stream.stop_stream()
