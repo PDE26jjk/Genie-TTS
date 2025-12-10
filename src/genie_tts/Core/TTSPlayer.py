@@ -90,12 +90,13 @@ class TTSPlayer:
                 tts_client.stop_event.clear()
                 audio_chunk = tts_client.tts(
                     text=sentence,
-                    language=gsv_model.LANGUAGE,
                     prompt_audio=context.current_prompt_audio,
                     encoder=gsv_model.T2S_ENCODER,
                     first_stage_decoder=gsv_model.T2S_FIRST_STAGE_DECODER,
                     stage_decoder=gsv_model.T2S_STAGE_DECODER,
                     vocoder=gsv_model.VITS,
+                    prompt_encoder=gsv_model.PROMPT_ENCODER,
+                    language=gsv_model.LANGUAGE,
                 )
 
                 if audio_chunk is not None:

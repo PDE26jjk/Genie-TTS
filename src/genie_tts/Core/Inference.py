@@ -4,8 +4,9 @@ from typing import List, Optional
 import threading
 
 from ..Audio.ReferenceAudio import ReferenceAudio
-from ..G2P.G2P import text_to_phones
-from ..Utils.Constants import BERT_FEATURE_DIM
+from ..GetPhonesAndBert import get_phones_and_bert
+
+MAX_T2S_LEN = 1000
 
 
 class GENIE:
@@ -15,18 +16,17 @@ class GENIE:
     def tts(
             self,
             text: str,
-            language: str,
             prompt_audio: ReferenceAudio,
             encoder: ort.InferenceSession,
             first_stage_decoder: ort.InferenceSession,
             stage_decoder: ort.InferenceSession,
             vocoder: ort.InferenceSession,
+            prompt_encoder: Optional[ort.InferenceSession],
+            language: str = 'japanese',
     ) -> Optional[np.ndarray]:
-        text_seq: np.ndarray = np.array(
-            [text_to_phones(text, language=language)],
-            dtype=np.int64,
-        )
-        text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+        text = '。' + text  # 防止漏第一句。
+        text_seq, text_bert = get_phones_and_bert(text, language=language)
+
         semantic_tokens: np.ndarray = self.t2s_cpu(
             ref_seq=prompt_audio.phonemes_seq,
             ref_bert=prompt_audio.text_bert,
@@ -37,20 +37,29 @@ class GENIE:
             first_stage_decoder=first_stage_decoder,
             stage_decoder=stage_decoder,
         )
-        if self.stop_event.is_set():
-            return None
 
         eos_indices = np.where(semantic_tokens >= 1024)  # 剔除不合法的元素，例如 EOS Token。
         if len(eos_indices[0]) > 0:
             first_eos_index = eos_indices[-1][0]
             semantic_tokens = semantic_tokens[..., :first_eos_index]
 
-        audio_32k = np.expand_dims(prompt_audio.audio_32k, axis=0)  # 增加 Batch_Size 维度
-        return vocoder.run(None, {
-            "text_seq": text_seq,
-            "pred_semantic": semantic_tokens,
-            "ref_audio": audio_32k
-        })[0]
+        if prompt_encoder is None:
+            return vocoder.run(None, {
+                "text_seq": text_seq,
+                "pred_semantic": semantic_tokens,
+                "ref_audio": prompt_audio.audio_32k
+            })[0]
+        else:
+            # V2ProPlus 新增。
+            prompt_audio.update_global_emb(prompt_encoder=prompt_encoder)
+            audio_chunk = vocoder.run(None, {
+                "text_seq": text_seq,
+                "pred_semantic": semantic_tokens,
+                "ge": prompt_audio.global_emb,
+                "ge_advanced": prompt_audio.global_emb_advanced,
+            })[0]
+            # print(audio_chunk.shape)
+            return audio_chunk
 
     def t2s_cpu(
             self,
@@ -75,10 +84,12 @@ class GENIE:
                 "ssl_content": ssl_content,
             },
         )
+
         # First Stage Decoder
         y, y_emb, *present_key_values = first_stage_decoder.run(
             None, {"x": x, "prompts": prompts}
         )
+
         # Stage Decoder
         input_names: List[str] = [inp.name for inp in stage_decoder.get_inputs()]
         idx: int = 0
@@ -94,6 +105,7 @@ class GENIE:
 
             if stop_condition_tensor:
                 break
+
         y[0, -1] = 0
         return np.expand_dims(y[:, -idx:], axis=0)
 

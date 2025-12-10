@@ -11,7 +11,7 @@ import genie_tts as genie
 
 # 自行修改
 MIDORI_DIR = 'C:/Users/Haruka/Desktop/Midori'
-TTS_CONFIGS = {
+V2ProPlus = {
     'Chinese': {
         'genie_model_dir': f'{MIDORI_DIR}/Data/character_resource/hutao/tts/tts_models',
         'gpt_path': f"{MIDORI_DIR}/Data/gpt_sovits_resource (private)/Model (V2ProPlus)/hutao/Hutao-e50.ckpt",
@@ -43,19 +43,20 @@ TTS_CONFIGS = {
 
 def test_tts(lang: str = 'Chinese', character_name: str = 'Test'):
     print(f'开始测试 {lang} TTS')
+    cfg = V2ProPlus
     genie.load_character(
         character_name=character_name,
-        onnx_model_dir=TTS_CONFIGS[lang]['genie_model_dir'],
+        onnx_model_dir=cfg[lang]['genie_model_dir'],
         language=lang,
     )
     genie.set_reference_audio(
         character_name=character_name,
-        audio_path=TTS_CONFIGS[lang]['prompt_audio'],
-        audio_text=TTS_CONFIGS[lang]['prompt_text'],
+        audio_path=cfg[lang]['prompt_audio'],
+        audio_text=cfg[lang]['prompt_text'],
     )
     genie.tts(
         character_name=character_name,
-        text=TTS_CONFIGS[lang]['default_text'],
+        text=cfg[lang]['default_text'],
         play=True,
     )
     genie.wait_for_playback_done()
