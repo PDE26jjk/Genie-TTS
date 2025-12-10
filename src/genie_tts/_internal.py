@@ -5,14 +5,11 @@ from os import PathLike
 
 os.environ["HF_HUB_ENABLE_PROGRESS_BAR"] = "1"
 
-# 2、Logging。
+# 2、Logging & Warnings。
 import logging
+import warnings
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(message)s",
-    datefmt="[%X]"
-)
+warnings.filterwarnings("ignore", category=UserWarning, module="jieba_fast._compat")
 logger = logging.getLogger(__name__)
 
 # 3、ONNX。
@@ -36,6 +33,12 @@ from .PredefinedCharacter import download_predefined_character_model
 # A module-level private dictionary to store reference audio configurations.
 _reference_audios: Dict[str, dict] = {}
 SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
+
+
+def set_log_severity_level(level: int = logging.INFO) -> None:
+    logger.setLevel(level)
+    for handler in logger.handlers:
+        handler.setLevel(level)
 
 
 def load_character(

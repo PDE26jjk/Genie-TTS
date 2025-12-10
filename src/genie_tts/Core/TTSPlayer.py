@@ -3,7 +3,6 @@
 import queue
 import os
 import threading
-import time
 
 import numpy as np
 import wave
@@ -45,8 +44,6 @@ class TTSPlayer:
         self._play: bool = False
         self._current_save_path: Optional[str] = None
         self._session_audio_chunks: List[np.ndarray] = []
-        self._start_time: Optional[float] = None
-        self._end_time: Optional[float] = None
         self._split: bool = False
 
         self._chunk_callback: Optional[Callable[[Optional[bytes]], None]] = None
@@ -100,12 +97,6 @@ class TTSPlayer:
                 )
 
                 if audio_chunk is not None:
-                    if self._end_time is None:
-                        self._end_time = time.time()
-                        if self._start_time:
-                            duration: float = self._end_time - self._start_time
-                            logger.info(f"First packet latency: {duration:.3f} seconds.")
-
                     if self._play:
                         self._audio_queue.put(audio_chunk)
                     if self._current_save_path:
@@ -219,16 +210,11 @@ class TTSPlayer:
             self._split = split
             self._current_save_path = save_path
             self._session_audio_chunks = []
-            self._start_time = None
-            self._end_time = None
 
     def feed(self, text_chunk: str):
         with self._api_lock:
             if not text_chunk:
                 return
-            if self._start_time is None:
-                self._start_time = time.time()
-
             if self._split:
                 sentences = self._text_splitter.split(text_chunk.strip())
                 for sentence in sentences:

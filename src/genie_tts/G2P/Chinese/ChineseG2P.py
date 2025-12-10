@@ -165,7 +165,6 @@ class ChineseG2P:
                         all_word2ph.append(len(phone_pair))
                     except KeyError:
                         # 遇到未知的拼音组合，记录错误或跳过
-                        print(f"Warning: Pinyin mapping not found for {c} {v}")
                         continue
 
         return all_phones, all_word2ph
@@ -183,24 +182,3 @@ processor: ChineseG2P = ChineseG2P()
 
 def chinese_to_phones(text: str) -> Tuple[str, List[str], List[int], List[int]]:
     return processor.process(text)
-
-
-if __name__ == "__main__":
-    test_sentences = [
-        "银行行长决定重新调查那份重要的文件。",
-        "着火的房间里，他急得直朝外面跑。",
-        "这个项目难度很大，我们得仔细地把每一步都落实。",
-        "他把那幅画卷起来放好，准备明天交给老师。",
-        "老人看着孩子们玩耍，忍不住笑了起来。",
-        "这件事得等大家商量过后再做决定。",
-        "长安街上车水马龙，人群来来往往。",
-        "面对突如其来的困难，他们只好另寻出路。",
-        "音乐会开始前，他先调了调乐器的音色。",
-        "为了避免误会，他们把事情从头到尾又说了一遍。",
-        "你好"
-    ]
-    for _idx, _text in enumerate(test_sentences, 1):
-        print(f"\n===== 示例 {_idx}: {_text} =====")
-        _norm_text, _phones, _phones_ids, _word2ph = chinese_to_phones(_text)
-        print("phones (symbols):", _phones)
-        print("word2ph:", _word2ph)

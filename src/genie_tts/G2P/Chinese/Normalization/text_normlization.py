@@ -167,25 +167,3 @@ class TextNormalizer:
         sentences = self._split(text)
         sentences = [self.normalize_sentence(sent) for sent in sentences]
         return sentences
-
-
-if __name__ == "__main__":
-    tn = TextNormalizer()
-    tests = [
-        "今天是2021年5月3日，气温25℃，明天10~12℃。",
-        "我买了3.5kg苹果，总价12.8元，比昨天贵5%。",
-        "电话是13812345678，座机是0571-88991234。",
-        "会议时间：10:30~12:00，下午14:00开始第二场。",
-        "版本号v2.3.1比v1.9更新。",
-        "今年1/3的人选择A方案，2/5的人选择B方案。",
-        "负数-12.5加上3等于多少？",
-        "温度-5℃到3℃之间都算正常波动。",
-        "他跑了1000m，用时3分20秒。",
-        "预算范围为300~500元，最好不要超过600元。",
-        "3×(2+5)÷7的结果是多少？",
-    ]
-
-    for t in tests:
-        print("原句：", t)
-        print("规范：", "".join(tn.normalize(t)))
-        print("-" * 60)

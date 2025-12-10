@@ -117,6 +117,3 @@ def create_master_symbol_list():
 
 symbols_v2: List[str] = create_master_symbol_list()
 symbol_to_id_v2: Dict[str, int] = {s: i for i, s in enumerate(symbols_v2)}
-
-if __name__ == "__main__":
-    print(f"生成的符号总数: {len(symbols_v2)}")

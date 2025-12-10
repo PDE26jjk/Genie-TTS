@@ -47,21 +47,3 @@ class ErhuaProcessor:
             new_initials.append(initials[i])
             new_finals.append(phn)
         return new_initials, new_finals
-
-
-if __name__ == "__main__":
-    processor = ErhuaProcessor()
-    print("===== 儿化逻辑测试 =====")
-    test_cases = [
-        # (initials, finals, word, pos, description)
-        (["h", ""], ["hua1", "er2"], "花儿", "n", "普通儿化: 花儿 -> hua1 er1"),
-        (["n", ""], ["nv3", "er2"], "女儿", "n", "非儿化名单: 女儿 -> 保持原样"),
-        (["x", "y", ""], ["xiao3", "yuan4", "er2"], "小院儿", "n", "必儿化名单: 小院儿 -> er4"),
-        (["w", ""], ["wan2", "er1"], "玩儿", "v", "修正er1 -> er2 -> er2 (动词通常儿化)"),
-    ]
-    for _initials, _finals, _word, _pos, _desc in test_cases:
-        new_ini, new_fin = processor.merge_erhua(list(_initials), list(_finals), _word, _pos)
-        print(f"测试: {_word} ({_desc})")
-        print(f"  原始韵母: {_finals}")
-        print(f"  结果韵母: {new_fin}")
-        print("-" * 30)

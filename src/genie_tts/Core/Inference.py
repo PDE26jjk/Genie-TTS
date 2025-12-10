@@ -58,7 +58,6 @@ class GENIE:
                 "ge": prompt_audio.global_emb,
                 "ge_advanced": prompt_audio.global_emb_advanced,
             })[0]
-            # print(audio_chunk.shape)
             return audio_chunk
 
     def t2s_cpu(

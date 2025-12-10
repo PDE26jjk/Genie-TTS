@@ -42,9 +42,6 @@ CONSECUTIVE_PUNCTUATION_PATTERN = re.compile(rf"([{PUNCTUATIONS_FOR_REGEX}\s])([
 # 辅助函数
 def _read_cmu_dict(file_path: str) -> Dict[str, List[str]]:
     g2p_dict = {}
-    if not os.path.exists(file_path):
-        print(f"Dictionary file not found: {file_path}")
-        return g2p_dict
     with open(file_path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()

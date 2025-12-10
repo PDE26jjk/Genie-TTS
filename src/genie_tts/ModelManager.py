@@ -290,7 +290,12 @@ class ModelManager:
                     raise FileNotFoundError(f'文件 {model_path} 不存在！')
 
             # 日志信息
-            logger.info(f"Model loaded successfully: {model_dir}")
+            is_v2pp = model_dict[GSVModelFile.PROMPT_ENCODER] is not None
+            logger.info(
+                f"Character {character_name.capitalize()} loaded successfully.\n"
+                f"- Model Path: {model_dir}\n"
+                f"- Model Type: {'V2ProPlus' if is_v2pp else 'V2'}"
+            )
 
             self.character_to_model[character_name] = model_dict
             self.character_to_language[character_name] = language

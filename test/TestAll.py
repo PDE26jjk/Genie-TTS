@@ -9,6 +9,8 @@ os.environ['GENIE_DATA_DIR'] = r"C:\Users\Haruka\Desktop\Midori\Data\common_reso
 
 import genie_tts as genie
 
+# genie.set_log_severity_level(logging.ERROR)
+
 # 自行修改
 MIDORI_DIR = 'C:/Users/Haruka/Desktop/Midori'
 V2ProPlus = {
@@ -41,9 +43,8 @@ V2ProPlus = {
 }
 
 
-def test_tts(lang: str = 'Chinese', character_name: str = 'Test'):
+def test_tts(cfg: dict, lang: str = 'Chinese', character_name: str = 'Test'):
     print(f'开始测试 {lang} TTS')
-    cfg = V2ProPlus
     genie.load_character(
         character_name=character_name,
         onnx_model_dir=cfg[lang]['genie_model_dir'],
@@ -62,6 +63,10 @@ def test_tts(lang: str = 'Chinese', character_name: str = 'Test'):
     genie.wait_for_playback_done()
     print(f'{lang} TTS 测试结束')
 
+    genie.unload_character(character_name)
+
 
 if __name__ == '__main__':
-    test_tts('Chinese')
+    test_tts(V2ProPlus, 'Chinese')
+    test_tts(V2ProPlus, 'English')
+    test_tts(V2ProPlus, 'Japanese')

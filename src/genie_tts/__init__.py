@@ -1,8 +1,20 @@
-from ._internal import (load_character, unload_character, set_reference_audio, tts_async, tts, stop, convert_to_onnx,
-                        clear_reference_audio_cache, load_predefined_character, wait_for_playback_done)
+from ._internal import (
+    set_log_severity_level,
+    load_character,
+    unload_character,
+    set_reference_audio,
+    tts_async,
+    tts,
+    stop,
+    convert_to_onnx,
+    clear_reference_audio_cache,
+    load_predefined_character,
+    wait_for_playback_done,
+)
 from .Server import start_server
 
 __all__ = [
+    "set_log_severity_level",
     "load_character",
     "unload_character",
     "set_reference_audio",
