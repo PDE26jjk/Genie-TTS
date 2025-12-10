@@ -10,6 +10,7 @@ import logging
 import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning, module="jieba_fast._compat")
+logging.basicConfig(level=logging.INFO, format="%(message)s", datefmt="[%X]")
 logger = logging.getLogger(__name__)
 
 # 3、ONNX。
@@ -33,12 +34,6 @@ from .PredefinedCharacter import download_predefined_character_model
 # A module-level private dictionary to store reference audio configurations.
 _reference_audios: Dict[str, dict] = {}
 SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
-
-
-def set_log_severity_level(level: int = logging.INFO) -> None:
-    logger.setLevel(level)
-    for handler in logger.handlers:
-        handler.setLevel(level)
 
 
 def load_character(
@@ -129,6 +124,7 @@ def set_reference_audio(
         'audio_text': audio_text,
         'language': language,
     }
+    # print(_reference_audios[character_name])
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=audio_path,
         prompt_text=audio_text,
@@ -290,7 +286,7 @@ def convert_to_onnx(
         logger.error("❌ PyTorch is not installed. Please run `pip install torch` first.")
         return
 
-    from .Converter.v2.Converter import convert
+    from .Converter.Converter import convert
 
     torch_ckpt_path = os.fspath(torch_ckpt_path)
     torch_pth_path = os.fspath(torch_pth_path)

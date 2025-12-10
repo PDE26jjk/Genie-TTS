@@ -1,5 +1,4 @@
 from ._internal import (
-    set_log_severity_level,
     load_character,
     unload_character,
     set_reference_audio,
@@ -14,7 +13,6 @@ from ._internal import (
 from .Server import start_server
 
 __all__ = [
-    "set_log_severity_level",
     "load_character",
     "unload_character",
     "set_reference_audio",

@@ -1,17 +1,28 @@
 """
 该文件仅供开发者使用。
 请在 Pycharm 把 src 文件夹 Mark 为 Sources Root, 这样才能导入 genie_tts 并进行测试。
+
+2025/12/11
+测试项目:
+- V2 转换
+- V2 ProPlus 转换
+- 中文推理
+- 日文推理
+- 英文推理
+全部通过。
 """
-# 链接到 Midori
+# 将 Genie 链接到 Midori
 import os
 
 os.environ['GENIE_DATA_DIR'] = r"C:\Users\Haruka\Desktop\Midori\Data\common_resource\tts"
 
 import genie_tts as genie
+import shutil
 
 # genie.set_log_severity_level(logging.ERROR)
 
-# 自行修改
+TEST_CACHE_DIR = './GenieTemp'
+os.makedirs(TEST_CACHE_DIR, exist_ok=True)
 MIDORI_DIR = 'C:/Users/Haruka/Desktop/Midori'
 V2ProPlus = {
     'Chinese': {
@@ -41,10 +52,55 @@ V2ProPlus = {
         'prompt_text': 'Are you a brave speaker?You look like one -- hmm, and sound like too.'
     }
 }
+V2 = {
+    'Japanese': {
+        'gpt_path': f"{MIDORI_DIR}/Data/gpt_sovits_resource (private)/Model (V2)/nene/nene.ckpt",
+        'vits_path': f"{MIDORI_DIR}/Data/gpt_sovits_resource (private)/Model (V2)/nene/nene.pth",
+        'default_text': '今日も素敵な一日をお過ごしください。',
+        'prompt_audio': f"{MIDORI_DIR}/Data/character_resource/nene/tts/prompt_wav/nen001_010.wav",
+        'prompt_text': '何かあったらいつでも話して下さい。学院のことじゃなく、私事に関することでも何でも'
+    },
+}
+
+
+def test_convert(cfg: dict, lang: str = 'Chinese', character_name='Test'):
+    print(f'开始测试 convert')
+
+    if os.path.isdir(TEST_CACHE_DIR):
+        shutil.rmtree(TEST_CACHE_DIR)
+
+    genie.convert_to_onnx(
+        torch_ckpt_path=cfg[lang]['gpt_path'],
+        torch_pth_path=cfg[lang]['vits_path'],
+        output_dir=os.path.join(TEST_CACHE_DIR, 'TempModel'),
+    )
+    genie.load_character(
+        character_name=character_name,
+        onnx_model_dir=os.path.join(TEST_CACHE_DIR, 'TempModel'),
+        language=lang,
+    )
+    genie.set_reference_audio(
+        character_name=character_name,
+        audio_path=cfg[lang]['prompt_audio'],
+        audio_text=cfg[lang]['prompt_text'],
+    )
+    while True:
+        text = input('输入文本(输入c停止):')
+        if text.lower() == 'c':
+            break
+        genie.tts(
+            character_name=character_name,
+            text=text or cfg[lang]['default_text'],
+            play=True,
+        )
+        genie.wait_for_playback_done()
+
+    print(f'结束测试 v2pp convert')
 
 
 def test_tts(cfg: dict, lang: str = 'Chinese', character_name: str = 'Test'):
     print(f'开始测试 {lang} TTS')
+
     genie.load_character(
         character_name=character_name,
         onnx_model_dir=cfg[lang]['genie_model_dir'],
@@ -61,12 +117,22 @@ def test_tts(cfg: dict, lang: str = 'Chinese', character_name: str = 'Test'):
         play=True,
     )
     genie.wait_for_playback_done()
-    print(f'{lang} TTS 测试结束')
 
+    print(f'结束测试 {lang} TTS')
     genie.unload_character(character_name)
 
 
+def test_tts_all():
+    test_tts(V2ProPlus, lang='Chinese')
+    test_tts(V2ProPlus, lang='English')
+    test_tts(V2ProPlus, lang='Japanese')
+
+
 if __name__ == '__main__':
-    test_tts(V2ProPlus, 'Chinese')
-    test_tts(V2ProPlus, 'English')
-    test_tts(V2ProPlus, 'Japanese')
+    try:
+        # test_convert(V2ProPlus, lang='Japanese')
+        test_convert(V2, lang='Japanese')
+    finally:
+        print('删除临时文件夹')
+        if os.path.isdir(TEST_CACHE_DIR):
+            shutil.rmtree(TEST_CACHE_DIR)

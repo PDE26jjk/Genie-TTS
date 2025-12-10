@@ -135,7 +135,8 @@ def convert(torch_ckpt_path: str,
             converter_1.run_full_process()
             converter_2.run_full_process()
             converter_3.run_full_process()
-            logger.info(f"🎉 Conversion successful! Saved to: {os.path.abspath(output_dir)}\n")
+            logger.info(f"🎉 Conversion successful! Saved to: {os.path.abspath(output_dir)}\n"
+                        f"- Model Type: V2")
         except Exception:
             logger.error(f"❌ A critical error occurred during the conversion process")
             logger.error(traceback.format_exc())

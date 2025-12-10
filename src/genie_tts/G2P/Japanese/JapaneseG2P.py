@@ -151,6 +151,7 @@ class JapaneseG2P:
 
 def japanese_to_phones(text: str) -> List[int]:
     phones = JapaneseG2P.g2p(text)
-    phones = ["UNK" if ph not in symbols_v2 else ph for ph in phones]
+    phones = [ph for ph in phones if ph in symbols_v2]
+    # print(phones)
     phones = [symbol_to_id_v2[ph] for ph in phones]
     return phones
