@@ -84,6 +84,7 @@ class TTSPlayer:
                 tts_client.stop_event.clear()
                 audio_chunk = tts_client.tts(
                     text=sentence,
+                    language=gsv_model.LANGUAGE,
                     prompt_audio=context.current_prompt_audio,
                     encoder=gsv_model.T2S_ENCODER,
                     first_stage_decoder=gsv_model.T2S_FIRST_STAGE_DECODER,
@@ -178,12 +179,13 @@ class TTSPlayer:
             self._session_audio_chunks = []
             self._current_save_path = None
 
-    def start_session(self,
-                      play: bool = False,
-                      split: bool = False,
-                      save_path: Optional[str] = None,
-                      chunk_callback: Optional[Callable[[Optional[bytes]], None]] = None
-                      ):
+    def start_session(
+            self,
+            play: bool = False,
+            split: bool = False,
+            save_path: Optional[str] = None,
+            chunk_callback: Optional[Callable[[Optional[bytes]], None]] = None
+    ):
         with self._api_lock:
             self._tts_done_event.clear()
             self._chunk_callback = chunk_callback

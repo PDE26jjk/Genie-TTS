@@ -33,6 +33,7 @@ class _GSVModelFile:
 
 @dataclass
 class GSVModel:
+    LANGUAGE: str
     T2S_ENCODER: InferenceSession
     T2S_FIRST_STAGE_DECODER: InferenceSession
     T2S_STAGE_DECODER: InferenceSession
@@ -86,7 +87,9 @@ class ModelManager:
     def __init__(self):
         capacity_str = os.getenv('Max_Cached_Character_Models', '3')
         self.character_to_model: dict[str, dict[str, InferenceSession]] = LRUCacheDict(
-            capacity=int(capacity_str))
+            capacity=int(capacity_str)
+        )
+        self.character_to_language: dict[str, str] = {}
         self.character_model_paths: dict[str, str] = {}  # 创建一个持久化字典来存储角色模型路径
         self.providers = ["CPUExecutionProvider"]
 
@@ -116,9 +119,12 @@ class ModelManager:
         return False
 
     def get(self, character_name: str) -> Optional[GSVModel]:
+        language = self.character_to_language.get(character_name, 'Japanese')
+
         if character_name in self.character_to_model:
             model_map = self.character_to_model[character_name]
             return GSVModel(
+                LANGUAGE=language,
                 T2S_ENCODER=model_map[_GSVModelFile.T2S_ENCODER],
                 T2S_FIRST_STAGE_DECODER=model_map[_GSVModelFile.T2S_FIRST_STAGE_DECODER],
                 T2S_STAGE_DECODER=model_map[_GSVModelFile.T2S_STAGE_DECODER],
@@ -126,7 +132,7 @@ class ModelManager:
             )
         if character_name in self.character_model_paths:
             model_dir = self.character_model_paths[character_name]
-            if self.load_character(character_name, model_dir):
+            if self.load_character(character_name, model_dir=model_dir, language=language):
                 return self.get(character_name)
             else:
                 del self.character_model_paths[character_name]  # 如果重载失败，可以考虑从路径记录中移除，防止反复失败
@@ -137,7 +143,12 @@ class ModelManager:
         character_name = character_name.lower()
         return character_name in self.character_model_paths
 
-    def load_character(self, character_name: str, model_dir: str) -> bool:
+    def load_character(
+            self,
+            character_name: str,
+            model_dir: str,
+            language: str,
+    ) -> bool:
         character_name = character_name.lower()
         if character_name in self.character_to_model:
             logger.info(f"Character '{character_name}' is already in cache; no need to reload.")
@@ -156,9 +167,11 @@ class ModelManager:
             model_path: str = os.path.join(model_dir, model_file)
             model_path = os.path.normpath(model_path)
             try:
-                model_dict[model_file] = onnxruntime.InferenceSession(model_path,
-                                                                      providers=self.providers,
-                                                                      sess_options=SESS_OPTIONS)
+                model_dict[model_file] = onnxruntime.InferenceSession(
+                    model_path,
+                    providers=self.providers,
+                    sess_options=SESS_OPTIONS,
+                )
                 logger.info(f"Model loaded successfully: {model_path}")
             except Exception as e:
                 logger.error(
@@ -168,6 +181,7 @@ class ModelManager:
                 return False
 
         self.character_to_model[character_name] = model_dict
+        self.character_to_language[character_name] = language
         self.character_model_paths[character_name] = model_dir
 
         if not context.current_speaker:

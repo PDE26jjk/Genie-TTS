@@ -1,10 +1,7 @@
-from rich.console import Console
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ..Audio.ReferenceAudio import ReferenceAudio
-
-console: Console = Console()
 
 
 class Context:

@@ -9,7 +9,6 @@ soxr
 pyyaml
 pyaudio
 pydantic
-rich
 huggingface_hub[hf_xet]
 fastapi
 uvicorn[standard]

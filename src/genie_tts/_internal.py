@@ -30,7 +30,6 @@ from .Audio.ReferenceAudio import ReferenceAudio
 from .Core.TTSPlayer import tts_player
 from .ModelManager import model_manager
 from .Utils.Shared import context
-from .Client import Client
 from .PredefinedCharacter import download_predefined_character_model
 
 # A module-level private dictionary to store reference audio configurations.
@@ -41,6 +40,7 @@ SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
 def load_character(
         character_name: str,
         onnx_model_dir: Union[str, PathLike],
+        language: str,
 ) -> None:
     """
     Loads a character model from an ONNX model directory.
@@ -48,11 +48,13 @@ def load_character(
     Args:
         character_name (str): The name to assign to the loaded character.
         onnx_model_dir (str | PathLike): The directory path containing the ONNX model files.
+        language (str): The language of the character model.
     """
     model_path: str = os.fspath(onnx_model_dir)
     model_manager.load_character(
         character_name=character_name,
         model_dir=model_path,
+        language=language,
     )
 
 
@@ -74,6 +76,7 @@ def set_reference_audio(
         character_name: str,
         audio_path: Union[str, PathLike],
         audio_text: str,
+        language: str,
 ) -> None:
     """
     Sets the reference audio for a character to be used for voice cloning.
@@ -84,6 +87,7 @@ def set_reference_audio(
         character_name (str): The name of the character.
         audio_path (str | PathLike): The file path to the reference audio (e.g., a WAV file).
         audio_text (str): The transcript of the reference audio.
+        language (str): The language of the reference audio.
     """
     audio_path: str = os.fspath(audio_path)
 
@@ -98,10 +102,12 @@ def set_reference_audio(
     _reference_audios[character_name] = {
         'audio_path': audio_path,
         'audio_text': audio_text,
+        'language': language,
     }
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=audio_path,
         prompt_text=audio_text,
+        language=language,
     )
 
 
@@ -145,15 +151,16 @@ async def tts_async(
     loop = asyncio.get_running_loop()
 
     # 2. 定义回调函数，用于在线程和 asyncio 之间安全地传递数据
-    def tts_chunk_callback(chunk: Optional[bytes]):
+    def tts_chunk_callback(c: Optional[bytes]):
         """This callback is called from the TTS worker thread."""
-        loop.call_soon_threadsafe(stream_queue.put_nowait, chunk)
+        loop.call_soon_threadsafe(stream_queue.put_nowait, c)
 
     # 设置 TTS 上下文
     context.current_speaker = character_name
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=_reference_audios[character_name]['audio_path'],
         prompt_text=_reference_audios[character_name]['audio_text'],
+        language=_reference_audios[character_name]['language'],
     )
 
     # 3. 使用新的回调接口启动 TTS 会话
@@ -210,6 +217,7 @@ def tts(
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=_reference_audios[character_name]['audio_path'],
         prompt_text=_reference_audios[character_name]['audio_text'],
+        language=_reference_audios[character_name]['language'],
     )
 
     tts_player.start_session(
@@ -270,26 +278,20 @@ def clear_reference_audio_cache() -> None:
     ReferenceAudio.clear_cache()
 
 
-def launch_command_line_client() -> None:
-    """
-    Launch the command-line client.
-    """
-    cmd_client: Client = Client()
-    cmd_client.run()
-
-
 def load_predefined_character(character_name: str) -> None:
     """
     Download and load a predefined character model for TTS inference.
     """
-    character_name_list: list[str] = ['misono_mika']
-    if character_name not in character_name_list:
+    character_lang: dict[str, str] = {'misono_mika': 'Japanese'}
+    if character_name not in character_lang:
         logger.error(f"No predefined character model found for {character_name}")
+        return
 
     save_path: str = download_predefined_character_model(character_name)
     model_manager.load_character(
         character_name=character_name,
         model_dir=save_path,
+        language=character_lang[character_name],
     )
 
     audio_path = os.path.join(save_path, "prompt.wav")
@@ -302,4 +304,5 @@ def load_predefined_character(character_name: str) -> None:
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=audio_path,
         prompt_text=audio_text,
+        language=character_lang[character_name],
     )
