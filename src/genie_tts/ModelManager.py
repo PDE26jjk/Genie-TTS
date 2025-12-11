@@ -133,7 +133,7 @@ class ModelManager:
         if self.roberta_model is not None:
             return True
         if not os.path.exists(model_path):
-            logger.warning(f'RoBERTa model does not exist: {model_path}. BERT features will not be used.')
+            # logger.warning(f'RoBERTa model does not exist: {model_path}. BERT features will not be used.')
             return False
         try:
             self.roberta_model = onnxruntime.InferenceSession(

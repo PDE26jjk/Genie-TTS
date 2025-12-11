@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "genie-tts"
-version = "1.0.3"
+version = "2.0.0"
 authors = [
     { name = "High_Logic", email = "highlogic233@gmail.com" },
 ]
@@ -26,20 +26,31 @@ classifiers = [
 ]
 
 dependencies = [
-    "onnx",
-    "onnxruntime",
-    "numpy",
-    "pyopenjtalk",
-    "soundfile",
-    "soxr",
-    "pyyaml",
-    "rich",
-    "pyaudio",
-    "huggingface_hub[hf_xet]",
-    "fastapi",
-    "uvicorn[standard]",
-    "pydantic",
+    "onnx", # ONNX 模型格式支持
+    "onnxruntime", # ONNX 推理引擎
+    "tokenizers", # HuggingFace tokenizer
+    "numpy", # 数值计算
+    "soundfile", # 音频读写
+    "soxr", # 高质量重采样
+    "pyyaml", # YAML 解析
+    "sounddevice", # 音频播放
+    "pydantic", # 配置 / 数据模型
+    "huggingface_hub[hf_xet]", # HF Hub 支持 + xet
+    "fastapi", # Web API 框架
+    "uvicorn[standard]", # ASGI 服务器
+
+    # 日文 G2P
+    "pyopenjtalk-plus", # 日语 G2P
+
+    # 英文 G2P
+    "nltk", # 英语 NLP 工具
+
+    # 中文 G2P
+    "pypinyin", # 中文拼音
+    "g2pM", # 中文 G2P 模型
+    "jieba_fast", # 中文分词
 ]
+
 
 [project.urls]
 Homepage = "https://github.com/High-Logic/Genie"
@@ -54,4 +65,6 @@ include-package-data = true
 "genie_tts" = [
     "Data/v2/Models/*",
     "Data/v2/Keys/*",
+    "Data/v2ProPlus/Models/*",
+    "Data/v2ProPlus/Keys/*",
 ]

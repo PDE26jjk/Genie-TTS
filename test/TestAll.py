@@ -14,7 +14,7 @@
 # 将 Genie 链接到 Midori
 import os
 
-os.environ['GENIE_DATA_DIR'] = r"C:\Users\Haruka\Desktop\Midori\Data\common_resource\tts"
+# os.environ['GENIE_DATA_DIR'] = r"C:\Users\Haruka\Desktop\Midori\Data\common_resource\tts"
 
 import genie_tts as genie
 import shutil
@@ -95,6 +95,8 @@ def test_convert(cfg: dict, lang: str = 'Chinese', character_name='Test'):
         )
         genie.wait_for_playback_done()
 
+    genie.unload_character(character_name)
+
     print(f'结束测试 v2pp convert')
 
 
@@ -117,9 +119,9 @@ def test_tts(cfg: dict, lang: str = 'Chinese', character_name: str = 'Test'):
         play=True,
     )
     genie.wait_for_playback_done()
+    genie.unload_character(character_name)
 
     print(f'结束测试 {lang} TTS')
-    genie.unload_character(character_name)
 
 
 def test_tts_all():
@@ -130,8 +132,8 @@ def test_tts_all():
 
 if __name__ == '__main__':
     try:
-        test_tts(V2ProPlus, lang='Japanese')
-        # test_convert(V2ProPlus, lang='Japanese')
+        test_tts_all()
+        test_convert(V2ProPlus, lang='Japanese')
         # test_convert(V2, lang='Japanese')
     finally:
         print('删除临时文件夹')

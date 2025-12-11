@@ -67,14 +67,6 @@ Install via pip:
 pip install genie-tts
 ```
 
-> 📝 **You may encounter an installation failure when trying to install pyopenjtalk. This is because pyopenjtalk
-> is a library that includes C extensions, and the publisher does not currently provide pre-compiled binary packages (
-> wheels).
-> For Windows users, this requires
-installing [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/). Specifically, you
-must select the "Desktop
-> development with C++" workload during the installation process.**
-
 ### ⚡️ Quick Tryout
 
 No GPT-SoVITS model yet? No problem!
@@ -171,34 +163,23 @@ genie.start_server(
 
 > For request formats and API details, see our [API Server Tutorial](./Tutorial/English/API%20Server%20Tutorial.py).
 
----
-
-## ⌨️ Launch CMD Client
-
-GENIE provides a simple command-line client for quick testing and interactive use:
-
-```python
-import genie_tts as genie
-
-# Launch CLI client
-genie.launch_command_line_client()
-```
 
 ---
 
 ## 📝 Roadmap
 
-* [ ] **🌐 Language Expansion**
+* [x] **🌐 Language Expansion**
 
-    * [ ] Add support for **Chinese** and **English**.
+    * [x] Add support for **Chinese** and **English**.
 
-* [ ] **🚀 Model Compatibility**
+* [x] **🚀 Model Compatibility**
 
-    * [ ] Support for `V2Proplus`, `V3`, `V4`, and more.
+    * [x] Support for `V2Proplus`.
+    * [ ] Support for `V3`, `V4`, and more.
 
-* [ ] **📦 Easy Deployment**
+* [x] **📦 Easy Deployment**
 
-    * [ ] Release **Docker images**.
-    * [ ] Provide out-of-the-box **Windows / Linux bundles**.
+    * [ ] Release **Official Docker images**.
+    * [x] Provide out-of-the-box **Windows bundles**.
 
 ---

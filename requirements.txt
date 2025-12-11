@@ -6,9 +6,9 @@ onnxruntime
 tokenizers
 numpy
 soundfile
+sounddevice
 soxr
 pyyaml
-pyaudio
 pydantic
 huggingface_hub[hf_xet]
 fastapi
