@@ -17,6 +17,7 @@ import os
 # os.environ['GENIE_DATA_DIR'] = r"C:\Users\Haruka\Desktop\Midori\Data\common_resource\tts"
 
 import genie_tts as genie
+from genie_tts.Utils.Language import normalize_language
 import shutil
 
 # genie.set_log_severity_level(logging.ERROR)
@@ -66,6 +67,8 @@ V2 = {
 def test_convert(cfg: dict, lang: str = 'Chinese', character_name='Test'):
     print(f'开始测试 convert')
 
+    lang = normalize_language(lang)
+
     if os.path.isdir(TEST_CACHE_DIR):
         shutil.rmtree(TEST_CACHE_DIR)
 
@@ -101,6 +104,7 @@ def test_convert(cfg: dict, lang: str = 'Chinese', character_name='Test'):
 
 
 def test_tts(cfg: dict, lang: str = 'Chinese', character_name: str = 'Test'):
+    lang = normalize_language(lang)
     print(f'开始测试 {lang} TTS')
 
     genie.load_character(
@@ -132,10 +136,11 @@ def test_tts_all():
 
 if __name__ == '__main__':
     try:
-        test_tts_all()
-        test_convert(V2ProPlus, lang='Japanese')
+        test_tts(V2ProPlus, lang='zh')
+        # test_tts_all()
+        # test_convert(V2ProPlus, lang='Japanese')
         # test_convert(V2, lang='Japanese')
     finally:
-        print('删除临时文件夹')
         if os.path.isdir(TEST_CACHE_DIR):
+            print('删除临时文件夹')
             shutil.rmtree(TEST_CACHE_DIR)

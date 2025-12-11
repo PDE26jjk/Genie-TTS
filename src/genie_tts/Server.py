@@ -12,6 +12,7 @@ from .Audio.ReferenceAudio import ReferenceAudio
 from .Core.TTSPlayer import tts_player
 from .ModelManager import model_manager
 from .Utils.Shared import context
+from .Utils.Language import normalize_language
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ def load_character_endpoint(payload: CharacterPayload):
         model_manager.load_character(
             character_name=payload.character_name,
             model_dir=payload.onnx_model_dir,
-            language=payload.language,
+            language=normalize_language(payload.language),
         )
         return {"status": "success", "message": f"Character '{payload.character_name}' loaded."}
     except Exception as e:
@@ -78,7 +79,7 @@ def set_reference_audio_endpoint(payload: ReferenceAudioPayload):
     _reference_audios[payload.character_name] = {
         'audio_path': payload.audio_path,
         'audio_text': payload.audio_text,
-        'language': payload.language,
+        'language': normalize_language(payload.language),
     }
     return {"status": "success", "message": f"Reference audio for '{payload.character_name}' set."}
 

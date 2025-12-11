@@ -9,6 +9,7 @@ Function: Load a character model into the server.
 Request Parameters (JSON):
     - character_name (string): Unique name of the character.
     - onnx_model_dir (string): Path to the model folder on the server.
+    - language (string): Language code for the model (e.g., 'en', 'zh', 'jp').
 
 2. Set Reference Audio
 Endpoint: POST /set_reference_audio
@@ -17,6 +18,7 @@ Request Parameters (JSON):
     - character_name (string): Name of the character to set.
     - audio_path (string): Path to the reference audio file on the server.
     - audio_text (string): Text corresponding to the reference audio.
+    - language (string): Language of the reference audio (e.g., 'en', 'zh', 'jp').
 
 3. Text-to-Speech (TTS)
 Endpoint: POST /tts
@@ -83,7 +85,8 @@ def main_client():
     print("\n[Client] Step 1: Sending load character request...")
     load_payload = {
         "character_name": "<CHARACTER_NAME>",  # Replace with your character name
-        "onnx_model_dir": r"<PATH_TO_CHARACTER_ONNX_MODEL_DIR>"  # Replace with the folder containing the ONNX model
+        "onnx_model_dir": r"<PATH_TO_CHARACTER_ONNX_MODEL_DIR>",  # Replace with the folder containing the ONNX model
+        "language": "<LANGUAGE_CODE>"  # Replace with language code, e.g., 'en', 'zh', 'jp'
     }
     try:
         response = requests.post(f"{BASE_URL}/load_character", json=load_payload)
@@ -98,7 +101,8 @@ def main_client():
     ref_audio_payload = {
         "character_name": "<CHARACTER_NAME>",  # Use the same character name as above
         "audio_path": r"<PATH_TO_REFERENCE_AUDIO>",  # Replace with path to your reference audio file
-        "audio_text": "<REFERENCE_AUDIO_TEXT>"  # Replace with the text corresponding to the reference audio
+        "audio_text": "<REFERENCE_AUDIO_TEXT>",  # Replace with the text corresponding to the reference audio
+        "language": "<LANGUAGE_CODE>"  # Replace with reference audio language, e.g., 'en', 'zh', 'jp'
     }
     try:
         response = requests.post(f"{BASE_URL}/set_reference_audio", json=ref_audio_payload)

@@ -29,6 +29,7 @@ from .Core.Resources import ensure_exists, Chinese_G2P_DIR, English_G2P_DIR
 from .Core.TTSPlayer import tts_player
 from .ModelManager import model_manager
 from .Utils.Shared import context
+from .Utils.Language import normalize_language
 from .PredefinedCharacter import download_chara, CHARA_LANG, CHARA_ALIAS_MAP
 
 # A module-level private dictionary to store reference audio configurations.
@@ -49,7 +50,7 @@ def load_character(
         onnx_model_dir (str | PathLike): The directory path containing the ONNX model files.
         language (str): The language of the character model.
     """
-    language = language.capitalize()
+    language = normalize_language(language)
     if language not in ['Japanese', 'English', 'Chinese']:
         raise ValueError('Unknown language')
 
@@ -113,7 +114,7 @@ def set_reference_audio(
             language = gsv_model.LANGUAGE
         else:
             raise ValueError('No language specified')
-    language = language.capitalize()
+    language = normalize_language(language)
     if language not in ['Japanese', 'English', 'Chinese']:
         raise ValueError('Unknown language')
 
