@@ -5,7 +5,7 @@ def test_feibi():
     genie.load_predefined_character('feibi')
     genie.tts(
         character_name='feibi',
-        text='棉花大哥哥和鬼蜀黍真是一对苦命鸳鸯啊。',
+        text='棉花大哥哥和鬼叔叔真是一对苦命鸳鸯啊。',
         play=True,
     )
     genie.wait_for_playback_done()
@@ -32,4 +32,4 @@ def test_37():
 
 
 if __name__ == '__main__':
-    test_37()
+    test_feibi()

@@ -27,7 +27,7 @@ classifiers = [
 
 dependencies = [
     "onnx", # ONNX 模型格式支持
-    "onnxruntime", # ONNX 推理引擎
+    "onnxruntime==1.22.1", # ONNX 推理引擎, 指定版本号以避免 1.23 的性能倒退
     "tokenizers", # HuggingFace tokenizer
     "numpy", # 数值计算
     "soundfile", # 音频读写
