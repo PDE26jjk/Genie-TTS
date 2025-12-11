@@ -3,6 +3,8 @@ import threading
 import queue
 from typing import Union, Optional, Callable
 import numpy as np
+import os
+import soundfile as sf
 
 
 def run_in_sub_thread(func) -> Callable[..., threading.Thread]:
@@ -35,26 +37,31 @@ class AudioPlayer:
     def _playback_worker(self) -> None:
         while not self._stop_event.is_set():
             try:
-                task: bytes = self._task_queue.get(timeout=0.5)
+                task: str = self._task_queue.get(timeout=0.1)
             except queue.Empty:
                 continue
 
-            stream: Optional[sd.OutputStream] = None
+            stream = None
             try:
-                stream = sd.OutputStream(
-                    samplerate=32000,
-                    channels=1,
-                    dtype='float32'  # 我们将处理好的浮点数据送入流
-                )
-                stream.start()
-                offset: int = 0
-                while offset < len(task) and not self._stop_event.is_set():
-                    chunk = task[offset:offset + self.CHUNK_SIZE]
-                    stream.write(chunk)
-                    offset += self.CHUNK_SIZE
-
+                if isinstance(task, str) and os.path.isfile(task):
+                    with sf.SoundFile(task, 'r') as f:
+                        if sd is not None:
+                            stream = sd.OutputStream(
+                                samplerate=f.samplerate,
+                                channels=f.channels,
+                                dtype='float32',
+                            )
+                            stream.start()
+                        while not self._stop_event.is_set():
+                            chunk = f.read(self.CHUNK_SIZE, dtype='float32')
+                            if not chunk.any():
+                                break
+                            stream.write(chunk)
             except Exception as e:
-                print(f"播放时发生错误: {e}")
+                if isinstance(e, sf.SoundFileError):
+                    print(f"无法读取或解析音频文件: {task}, 错误: {e}")
+                else:
+                    print(f"播放时发生错误: {e}")
             finally:
                 if stream:
                     stream.stop()

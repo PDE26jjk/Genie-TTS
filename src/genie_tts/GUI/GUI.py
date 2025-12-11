@@ -260,7 +260,7 @@ class TTSWidget(QWidget):
 
         # === 自动保存组 ===
         group_save = QGroupBox("自动保存设置")
-        layout_save = QFormLayout()
+        self.layout_save = QFormLayout()
         self.combo_save_mode = MyComboBox()
         self.combo_save_mode.addItems(["禁用自动保存", "保存为单个文件", "保存为多个文件"])
         self.combo_save_mode.currentIndexChanged.connect(self._update_save_ui_state)
@@ -268,9 +268,9 @@ class TTSWidget(QWidget):
         self.file_out_dir = FileSelectorWidget("out_dir", FileSelectionMode.DIRECTORY)
         self.file_out_dir.set_path(default_out_path)
         self.file_out_dir.setEnabled(False)
-        layout_save.addRow("保存方式:", self.combo_save_mode)
-        layout_save.addRow("输出文件夹:", self.file_out_dir)
-        group_save.setLayout(layout_save)
+        self.layout_save.addRow("保存方式:", self.combo_save_mode)
+        self.layout_save.addRow("输出文件夹:", self.file_out_dir)
+        group_save.setLayout(self.layout_save)
 
         right_column_layout.addWidget(group_infer)
         right_column_layout.addWidget(group_save)
@@ -423,7 +423,7 @@ class TTSWidget(QWidget):
 
     def _update_save_ui_state(self) -> None:
         enabled = self.combo_save_mode.currentText() != "禁用自动保存"
-        self.file_out_dir.setEnabled(enabled)
+        self.layout_save.setRowVisible(self.file_out_dir, enabled)
 
     def _play_ref_audio(self) -> None:
         path = self.file_ref_audio.get_path()
@@ -517,7 +517,7 @@ class TTSWidget(QWidget):
         text_full = self.text_input.toPlainText().strip()
         text_list = self._get_split_texts(text_full)
 
-        print(f"\n[INFO] 开始串行推理, 分句结果: {text_list}")
+        print(f"[INFO] 开始串行推理, 分句结果: {text_list}")
         self._process_serial_step(0, text_list, [], 32000)
 
     def _process_serial_step(
@@ -543,7 +543,7 @@ class TTSWidget(QWidget):
                     save_path = os.path.join(out_dir, target_names[0])
                 else:  # "禁用自动保存"
                     save_path = os.path.join(CACHE_DIR, f"{uuid.uuid4().hex}.wav")
-                sf.write(save_path, data=full_audio, samplerate=sample_rate)
+                sf.write(save_path, data=full_audio, samplerate=sample_rate, subtype='PCM_16')
                 self._add_to_preview(full_text, save_path)
 
             print(f"\n[INFO] 串行推理全部完成，共 {len(text_list)} 句。")
@@ -589,7 +589,7 @@ class TTSWidget(QWidget):
             if save_mode == "保存为多个文件":
                 target_names = generate_output_filenames(folder=out_dir, original_texts=[text_list[index]])
                 save_path = os.path.join(out_dir, target_names[0])
-                sf.write(save_path, data=audio_list[0], samplerate=sr)
+                sf.write(save_path, data=audio_list[0], samplerate=sr, subtype='PCM_16')
                 self._add_to_preview(text_list[index], save_path)
         else:
             print(f"[WARN] 第 {index + 1} 句返回空音频")
@@ -630,7 +630,7 @@ class MainWindow(QMainWindow):
         self.tabs: QTabWidget = QTabWidget()
         self.tts_widget = TTSWidget(self.player)
 
-        self.tabs.addTab(self.log_widget, "System Log")
+        self.tabs.addTab(self.log_widget, "GUI Log")
         self.tabs.addTab(self.tts_widget, "TTS Inference")
         self.tabs.setCurrentIndex(1)  # 默认显示TTS页
 

@@ -123,16 +123,16 @@ class InferenceWorker(QThread):
             if self.mode == 'load_character':
                 resp = requests.post(f"{API_BASE_URL}/load_character", json=self.req)
                 if resp.status_code == 200:
-                    self.finished.emit(True, "角色模型加载成功", None)
+                    self.finished.emit(True, "角色模型加载成功\n", None)
                 else:
-                    self.finished.emit(False, f"角色模型加载失败: {resp.text}", None)
+                    self.finished.emit(False, f"角色模型加载失败: {resp.text}\n", None)
 
             elif self.mode == 'set_reference_audio':
                 resp = requests.post(f"{API_BASE_URL}/set_reference_audio", json=self.req)
                 if resp.status_code == 200:
-                    self.finished.emit(True, "参考音频设置成功", None)
+                    self.finished.emit(True, "参考音频设置成功\n", None)
                 else:
-                    self.finished.emit(False, f"参考音频设置失败: {resp.text}", None)
+                    self.finished.emit(False, f"参考音频设置失败: {resp.text}\n", None)
 
             elif self.mode == 'tts':
                 resp = requests.post(f"{API_BASE_URL}/tts", json=self.req)
