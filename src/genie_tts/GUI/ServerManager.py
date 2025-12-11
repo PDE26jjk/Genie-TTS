@@ -1,4 +1,5 @@
 import sys
+import os
 import time
 import subprocess
 import requests
@@ -11,7 +12,9 @@ from .Utils import find_free_port
 
 PORT: int = find_free_port()
 API_BASE_URL: str = f"http://127.0.0.1:{PORT}"
-SERVER_SCRIPT_PATH: str = "./Source/Modules/TTS/GENIE/GenieModelExporter/API Server.py"
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+SERVER_SCRIPT_PATH: str = os.path.join(current_dir, "API Server.py")
 
 
 class ServerManager(QThread):

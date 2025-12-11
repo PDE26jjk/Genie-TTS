@@ -24,6 +24,7 @@ app = FastAPI()
 class CharacterPayload(BaseModel):
     character_name: str
     onnx_model_dir: str
+    language: str
 
 
 class UnloadCharacterPayload(BaseModel):
@@ -34,6 +35,7 @@ class ReferenceAudioPayload(BaseModel):
     character_name: str
     audio_path: str
     audio_text: str
+    language: str
 
 
 class TTSPayload(BaseModel):
@@ -49,6 +51,7 @@ def load_character_endpoint(payload: CharacterPayload):
         model_manager.load_character(
             character_name=payload.character_name,
             model_dir=payload.onnx_model_dir,
+            language=payload.language,
         )
         return {"status": "success", "message": f"Character '{payload.character_name}' loaded."}
     except Exception as e:
@@ -75,6 +78,7 @@ def set_reference_audio_endpoint(payload: ReferenceAudioPayload):
     _reference_audios[payload.character_name] = {
         'audio_path': payload.audio_path,
         'audio_text': payload.audio_text,
+        'language': payload.language,
     }
     return {"status": "success", "message": f"Reference audio for '{payload.character_name}' set."}
 
@@ -91,6 +95,7 @@ def run_tts_in_background(
         context.current_prompt_audio = ReferenceAudio(
             prompt_wav=_reference_audios[character_name]['audio_path'],
             prompt_text=_reference_audios[character_name]['audio_text'],
+            language=_reference_audios[character_name]['language'],
         )
         tts_player.start_session(
             play=False,

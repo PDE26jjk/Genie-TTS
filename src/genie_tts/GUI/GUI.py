@@ -173,7 +173,6 @@ class TTSWidget(QWidget):
         self.player: AudioPlayer = player
         self.splitter: TextSplitter = TextSplitter()
         self.current_gen_id: int = 0
-        self.last_imported_config: dict[str, str] = {}
         self.current_worker: Optional[InferenceWorker] = None
 
         main_layout = QVBoxLayout(self)
@@ -201,7 +200,7 @@ class TTSWidget(QWidget):
         group_model = QGroupBox("模型设置")
         self.layout_model = QFormLayout()
         self.combo_model_type = MyComboBox()
-        self.combo_model_type.addItems(["GPT-SoVITS", "Genie-TTS"])
+        self.combo_model_type.addItems(["Genie-TTS"])
         self.combo_model_type.currentTextChanged.connect(self._update_model_ui_visibility)
         self.combo_model_type.setEnabled(False)
         self.file_gpt = FileSelectorWidget("gpt_path", FileSelectionMode.FILE, "Checkpoints (*.ckpt)")
@@ -240,15 +239,15 @@ class TTSWidget(QWidget):
         group_infer = QGroupBox("推理参数")
         layout_infer = QFormLayout()
         self.combo_device = MyComboBox()
-        self.combo_device.addItems(["CUDA", "CPU"])
+        self.combo_device.addItems(["CPU"])
         self.combo_device.setEnabled(False)
         self.combo_quality = MyComboBox()
-        self.combo_quality.addItems(["质量优先", "速度优先"])
+        self.combo_quality.addItems(["质量优先"])
         self.combo_quality.setEnabled(False)
         self.combo_split = MyComboBox()
         self.combo_split.addItems(["不切分", "智能切分", "按行切分"])
         self.combo_mode = MyComboBox()
-        self.combo_mode.addItems(["并行推理", "串行推理"])
+        self.combo_mode.addItems(["串行推理"])
         self.combo_mode.setEnabled(False)
         self.combo_lang = MyComboBox()
         self.combo_lang.addItems(["Chinese", "English", "Japanese"])
@@ -368,17 +367,17 @@ class TTSWidget(QWidget):
             if index >= 0:
                 combo.setCurrentIndex(index)
 
-        set_combo_text(self.combo_model_type, data.get("model_type", "Genie-TTS"))
+        set_combo_text(self.combo_model_type, data.get("model_type", ""))
         self.file_gpt.set_path(data.get("gpt_path", ""), block_signals=True)
         self.file_vits.set_path(data.get("vits_path", ""), block_signals=True)
         self.file_genie.set_path(data.get("genie_dir", ""))
         self.file_ref_audio.set_path(data.get("ref_audio", ""))
         self.input_ref_text.setText(data.get("ref_text", ""))
 
-        set_combo_text(self.combo_device, data.get("device", "cpu"))
+        set_combo_text(self.combo_device, data.get("device", ""))
         set_combo_text(self.combo_quality, data.get("quality", ""))
-        set_combo_text(self.combo_split, data.get("split", "智能切分"))
-        set_combo_text(self.combo_mode, data.get("mode", "串行推理"))
+        set_combo_text(self.combo_split, data.get("split", ""))
+        set_combo_text(self.combo_mode, data.get("mode", ""))
         set_combo_text(self.combo_lang, data.get("lang", ""))
         set_combo_text(self.combo_save_mode, data.get("save_mode", ""))
 
@@ -469,68 +468,65 @@ class TTSWidget(QWidget):
 
         self.btn_start.setEnabled(False)
         self.btn_start.setText("推理中...")
-        self._chain_import_model(text)
+        self._chain_import_model()
 
     # ==================== 推理链式调用 ====================
 
-    def _chain_import_model(self, text: str):
-        model_type = self.combo_model_type.currentText()
-        lang = self.combo_lang.currentText()
-
-        current_config = {
-            "type": model_type,
-            "gpt": self.file_gpt.get_path(),
-            "vits": self.file_vits.get_path(),
-            "genie": self.file_genie.get_path(),
-            "lang": lang
-        }
-
-        if current_config == self.last_imported_config:
-            self._chain_tts(text)
-            return
-
+    def _chain_import_model(self) -> None:
         req = {
-            "model_name": TEMP_MODEL_NAME,
-            "genie_model_dir": current_config["genie"],
-            "language": lang
+            "character_name": TEMP_MODEL_NAME,
+            "onnx_model_dir": self.file_genie.get_path(),
+            "language": self.combo_lang.currentText(),
         }
-        worker = InferenceWorker(req, mode="import_genie")
-        worker.finished.connect(lambda s, m, d: self._on_import_finished(s, m, current_config, text))
+        worker = InferenceWorker(req, mode="load_character")
+        worker.finished.connect(lambda s, m, d: self._on_import_finished(s, m))
         worker.start()
         self.current_worker = worker
 
-    @Slot(bool, str, object, str, object)
-    def _on_import_finished(self, success: bool, msg: str, config: dict, text: str):
+    @Slot(bool, str)
+    def _on_import_finished(self, success: bool, msg: str) -> None:
         if not success:
             self._reset_ui_state()
             QMessageBox.critical(self, "模型加载失败", msg)
             return
-
         print(f"[INFO] {msg}")
-        self.last_imported_config = config
-        self._chain_tts(text)
+        self._chain_set_ref()
 
-    def _chain_tts(self, text_full: str, tts_params: dict) -> None:
-        text_list = self._get_split_texts(text_full)
-        ref_path = self.file_ref_audio.get_path()
-        ref_text = self.input_ref_text.text().strip()
-
+    def _chain_set_ref(self) -> None:
         req = {
-            "model_name": TEMP_MODEL_NAME,
-            "text_list": text_list,
-            "use_persistent_cache": tts_params["use_persistent_cache"],
-            "speed_test": tts_params["speed_test"],
-            "use_bert": tts_params["use_bert"],
-            "use_g2pw": tts_params["use_g2pw"],
-            "refer_audio_path": ref_path,
-            "refer_audio_text": ref_text,
+            "character_name": TEMP_MODEL_NAME,
+            "audio_path": self.file_ref_audio.get_path(),
+            "audio_text": self.input_ref_text.text().strip(),
+            "language": self.combo_lang.currentText(),
         }
+        worker = InferenceWorker(req, mode="set_reference_audio")
+        worker.finished.connect(lambda s, m, d: self._on_set_ref_finished(s, m))
+        worker.start()
+        self.current_worker = worker
+
+    @Slot(bool, str)
+    def _on_set_ref_finished(self, success: bool, msg: str) -> None:
+        if not success:
+            self._reset_ui_state()
+            QMessageBox.critical(self, "设置参考音频失败", msg)
+            return
+        print(f"[INFO] {msg}")
+        self._chain_tts()
+
+    def _chain_tts(self) -> None:
+        text_full = self.text_input.toPlainText().strip()
+        text_list = self._get_split_texts(text_full)
 
         print(f"\n[INFO] 开始串行推理, 分句结果: {text_list}")
-        self._process_serial_step(0, text_list, req, [], 32000)
+        self._process_serial_step(0, text_list, [], 32000)
 
-    def _process_serial_step(self, index: int, text_list: List[str], base_req: dict,
-                             audio_accumulator: List[np.ndarray], sample_rate: int):
+    def _process_serial_step(
+            self,
+            index: int,
+            text_list: List[str],
+            audio_accumulator: List[np.ndarray],
+            sample_rate: int
+    ) -> None:
         # 1. 终止条件：所有句子处理完毕
         if index >= len(text_list):
             save_mode = self.combo_save_mode.currentText()
@@ -555,17 +551,27 @@ class TTSWidget(QWidget):
             return
 
         # 2. 递归进行：发起当前句子的请求
-        req = base_req.copy()
-        req["text_list"] = [text_list[index]]
+        req = {
+            "character_name": TEMP_MODEL_NAME,
+            "text": text_list[index],
+        }
         worker = InferenceWorker(req, mode="tts")
         worker.finished.connect(
-            lambda s, m, d: self._on_serial_step_finished(s, m, d, index, text_list, base_req, audio_accumulator)
+            lambda s, m, d: self._on_serial_step_finished(s, m, d, index, text_list, audio_accumulator)
         )
         worker.start()
         self.current_worker = worker
 
-    def _on_serial_step_finished(self, success: bool, msg: str, return_data: dict,
-                                 index: int, text_list: List[str], base_req: dict, audio_accumulator: List[np.ndarray]):
+    @Slot(bool, str, object, int, object, object, object)
+    def _on_serial_step_finished(
+            self,
+            success: bool,
+            msg: str,
+            return_data: dict,
+            index: int,
+            text_list: List[str],
+            audio_accumulator: List[np.ndarray]
+    ) -> None:
         if not success:
             self._reset_ui_state()
             QMessageBox.critical(self, "推理失败", f"第 {index + 1} 句出错: {msg}")
@@ -589,7 +595,7 @@ class TTSWidget(QWidget):
             print(f"[WARN] 第 {index + 1} 句返回空音频")
 
         # 继续处理下一句
-        self._process_serial_step(index + 1, text_list, base_req, audio_accumulator, sr)
+        self._process_serial_step(index + 1, text_list, audio_accumulator, sr)
 
     def _add_to_preview(self, text: str, path: str) -> None:
         item = PreviewItemWidget(self.current_gen_id, text, path, self.player)
@@ -631,8 +637,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.tabs)
 
         # 初始化后台Server管理
-        device = self.tts_widget.current_preset_data.get('device', 'cuda')
-        self.server_manager: ServerManager = ServerManager(device=device)
+        self.server_manager: ServerManager = ServerManager()
         self.server_manager.server_ready.connect(self._on_server_ready)
         self.server_manager.start()
 
