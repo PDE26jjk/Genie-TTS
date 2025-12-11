@@ -6,7 +6,6 @@ os.environ['Max_Cached_Reference_Audio'] = '10'
 
 # Make sure to set environment variables before importing Genie.
 import genie_tts as genie
-import time
 
 genie.load_character(
     character_name='<CHARACTER_NAME>',  # Replace with your character name
@@ -28,4 +27,4 @@ genie.tts(
     save_path="<OUTPUT_AUDIO_PATH>",  # Replace with path to save the audio file
 )
 
-time.sleep(10)  # Since play=True, wait for playback to finish
+genie.wait_for_playback_done()  # Since play=True, wait for playback to finish

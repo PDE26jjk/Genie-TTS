@@ -70,23 +70,33 @@ pip install genie-tts
 ### ⚡️ Quick Tryout
 
 No GPT-SoVITS model yet? No problem!
-GENIE includes predefined speaker characters for immediate use without any model
-files. Run the code below to hear it in action:
+GENIE includes several predefined speaker characters you can use immediately —
+for example:
+
+* **Mika (聖園ミカ)** — from *Blue Archive* (Japanese)
+* **ThirtySeven (37)** — from *Reverse: 1999* (English)
+* **Feibi (菲比)** — from *Wuthering Waves* (Chinese)
+
+You can browse all available characters here:
+**[https://huggingface.co/High-Logic/Genie/tree/main/CharacterModels](
+https://huggingface.co/High-Logic/Genie/tree/main/CharacterModels)**
+
+Try it out with the example below:
 
 ```python
 import genie_tts as genie
 import time
 
 # Automatically downloads required files on first run
-genie.load_predefined_character('misono_mika')
+genie.load_predefined_character('mika')
 
 genie.tts(
-    character_name='misono_mika',
+    character_name='mika',
     text='どうしようかな……やっぱりやりたいかも……！',
     play=True,  # Play the generated audio directly
 )
 
-time.sleep(10)  # Add delay to ensure audio playback completes
+genie.wait_for_playback_done()  # Ensure audio playback completes
 ```
 
 ### 🎤 TTS Best Practices
@@ -100,6 +110,7 @@ import genie_tts as genie
 genie.load_character(
     character_name='<CHARACTER_NAME>',  # Replace with your character name
     onnx_model_dir=r"<PATH_TO_CHARACTER_ONNX_MODEL_DIR>",  # Folder containing ONNX model
+    language='<LANGUAGE_CODE>',  # Replace with language code, e.g., 'en', 'zh', 'jp'
 )
 
 # Step 2: Set reference audio (for emotion and intonation cloning)
@@ -117,6 +128,8 @@ genie.tts(
     save_path="<OUTPUT_AUDIO_PATH>",  # Output audio file path
 )
 
+genie.wait_for_playback_done()  # Ensure audio playback completes
+
 print("🎉 Audio generation complete!")
 ```
 
@@ -132,7 +145,7 @@ pip install torch
 
 Use the built-in conversion tool:
 
-> **Tip:** `convert_to_onnx` currently supports only V2 models.
+> **Tip:** `convert_to_onnx` currently supports V2 and V2ProPlus models.
 
 ```python
 import genie_tts as genie
