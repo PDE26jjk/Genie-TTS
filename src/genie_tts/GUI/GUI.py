@@ -269,7 +269,6 @@ class TTSWidget(QWidget):
         default_out_path = os.path.join(os.path.expanduser("~"), "Desktop", "Genie 输出语音")
         self.file_out_dir = FileSelectorWidget("out_dir", FileSelectionMode.DIRECTORY)
         self.file_out_dir.set_path(default_out_path)
-        self.file_out_dir.setEnabled(False)
         self.layout_save.addRow("保存方式:", self.combo_save_mode)
         self.layout_save.addRow("输出文件夹:", self.file_out_dir)
         group_save.setLayout(self.layout_save)
