@@ -1,4 +1,17 @@
 import os
+from huggingface_hub import snapshot_download
+
+
+def download_genie_data() -> None:
+    print(f"🚀 Starting download Genie-TTS resources… This may take a few moments. ⏳")
+    snapshot_download(
+        repo_id="High-Logic/Genie",
+        repo_type="model",
+        allow_patterns="GenieData/*",
+        local_dir=".",
+        local_dir_use_symlinks=True,  # 软链接
+    )
+    print("✅ Genie-TTS resources downloaded successfully.")
 
 
 def ensure_exists(path: str, name: str):
@@ -50,6 +63,12 @@ ROBERTA_MODEL_DIR: str = os.getenv(
     "ROBERTA_MODEL_DIR",
     f"{GENIE_DATA_DIR}/RoBERTa"
 )
+
+if not os.path.exists(GENIE_DATA_DIR):
+    print("⚠️ GenieData folder not found.")
+    choice = input("Would you like to download it automatically from HuggingFace? (y/N): ").strip().lower()
+    if choice == "y":
+        pass
 
 # ---- Run directory checks ----
 ensure_exists(HUBERT_MODEL_DIR, "HUBERT_MODEL_DIR")

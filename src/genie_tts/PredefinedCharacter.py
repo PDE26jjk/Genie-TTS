@@ -20,7 +20,7 @@ CHARA_ALIAS_MAP: Dict[str, str] = {
 }
 
 
-def download_chara(chara: str, version: str = "v2ProPlus"):
+def download_chara(chara: str, version: str = "v2ProPlus") -> str:
     local_dir = os.path.join("CharacterModels", version, chara)
     if os.path.exists(local_dir):
         print(f"✔ Model for '{chara}' already exists locally. Skipping download.")
