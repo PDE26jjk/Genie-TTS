@@ -136,7 +136,7 @@ def test_tts_all():
 
 if __name__ == '__main__':
     try:
-        test_tts(V2ProPlus, lang='zh')
+        test_tts(V2ProPlus, lang='jp')
         # test_tts_all()
         # test_convert(V2ProPlus, lang='Japanese')
         # test_convert(V2, lang='Japanese')

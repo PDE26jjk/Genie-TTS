@@ -20,6 +20,7 @@ onnxruntime.set_default_logger_severity(3)
 
 # 导入剩余库。
 
+from pathlib import Path
 import json
 import asyncio
 from typing import AsyncIterator, Optional, Union, Dict
@@ -37,6 +38,59 @@ _reference_audios: Dict[str, dict] = {}
 SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
 
 
+def check_onnx_model_dir(onnx_model_dir: Union[str, os.PathLike]) -> None:
+    """
+    Checks if the directory contains the necessary ONNX model files for Genie TTS (v2 or v2ProPlus).
+    Raises a FileNotFoundError with detailed instructions if validation fails.
+    """
+    model_path = Path(onnx_model_dir)
+
+    # 1. Check if directory exists
+    if not model_path.exists() or not model_path.is_dir():
+        raise FileNotFoundError(f"The model directory '{onnx_model_dir}' does not exist or is not a directory.")
+
+    # 2. Define required files
+    # Base files required by both v2 and v2ProPlus
+    required_base_files = {
+        "t2s_encoder_fp32.bin",
+        "t2s_encoder_fp32.onnx",
+        "t2s_first_stage_decoder_fp32.onnx",
+        "t2s_shared_fp16.bin",
+        "t2s_stage_decoder_fp32.onnx",
+        "vits_fp16.bin",
+        "vits_fp32.onnx"
+    }
+
+    # 3. Get current files in directory
+    existing_files = set(f.name for f in model_path.iterdir() if f.is_file())
+
+    # 4. Validate
+    # We check if the base files exist. If base files are missing, the model is definitely unusable.
+    if not required_base_files.issubset(existing_files):
+        missing = required_base_files - existing_files
+
+        # Construct detailed error message
+        error_msg = (
+            f"\n\n[Genie Error] Invalid ONNX model directory: '{model_path}'\n"
+            "===============================================================\n"
+            f"Missing base files: {', '.join(missing)}\n"
+            "A valid model folder must contain at least the following files.\n"
+            "1. [v2 Base] (Required for all models):\n"
+            "   - t2s_encoder_fp32.bin\n"
+            "   - t2s_encoder_fp32.onnx\n"
+            "   - t2s_first_stage_decoder_fp32.onnx\n"
+            "   - t2s_shared_fp16.bin\n"
+            "   - t2s_stage_decoder_fp32.onnx\n"
+            "   - vits_fp16.bin\n"
+            "   - vits_fp32.onnx\n"
+            "2. [v2ProPlus Additions] (Required for v2pp features):\n"
+            "   - prompt_encoder_fp16.bin\n"
+            "   - prompt_encoder_fp32.onnx\n"
+            "===============================================================\n"
+        )
+        raise FileNotFoundError(error_msg)
+
+
 def load_character(
         character_name: str,
         onnx_model_dir: Union[str, PathLike],
@@ -50,6 +104,8 @@ def load_character(
         onnx_model_dir (str | PathLike): The directory path containing the ONNX model files.
         language (str): The language of the character model.
     """
+    check_onnx_model_dir(onnx_model_dir)
+
     language = normalize_language(language)
     if language not in ['Japanese', 'English', 'Chinese']:
         raise ValueError('Unknown language')
