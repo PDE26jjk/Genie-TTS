@@ -24,6 +24,7 @@ from .Utils import (
 from .AudioPlayer import AudioPlayer
 from .PresetManager import PresetManager
 from .ServerManager import ServerManager, InferenceWorker
+from .ConverterWidget import ConverterWidget
 
 """
 抄自 Genie CUDA Runtime
@@ -630,9 +631,11 @@ class MainWindow(QMainWindow):
         # 初始化主界面
         self.tabs: QTabWidget = QTabWidget()
         self.tts_widget = TTSWidget(self.player)
+        self.conv_widget = ConverterWidget()
 
         self.tabs.addTab(self.log_widget, "GUI Log")
         self.tabs.addTab(self.tts_widget, "TTS Inference")
+        self.tabs.addTab(self.conv_widget, "Converter")
         self.tabs.setCurrentIndex(1)  # 默认显示TTS页
 
         self.setCentralWidget(self.tabs)
