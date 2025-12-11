@@ -125,6 +125,7 @@ class ChineseG2P:
             finals = []
             # G2PM 整句推理
             pinyins = self.g2pm(seg, char_split=True)
+            pinyins = [p.replace("u:", "v") for p in pinyins]
             pre_word_length = 0
             for word, pos in seg_cut:
                 now_word_length = pre_word_length + len(word)
@@ -171,6 +172,7 @@ class ChineseG2P:
 
     def process(self, text: str) -> Tuple[str, List[str], List[int], List[int]]:
         normalized_text = self.normalize_text(text)
+        # print(normalized_text)
         phones, word2ph = self.g2p(normalized_text)
         phones = [ph for ph in phones if ph in symbols_v2]
         phones_ids = [symbol_to_id_v2[ph] for ph in phones]

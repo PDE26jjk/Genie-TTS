@@ -217,7 +217,8 @@ class ToneSandhi:
 
     @staticmethod
     def _all_tone_three(finals: List[str]) -> bool:
-        return all(x[-1] == "3" for x in finals)
+        # 增加 len(x) > 0 的判断，防止空字符串导致崩溃
+        return all(len(x) > 0 and x[-1] == "3" for x in finals)
 
     @staticmethod
     def _merge_bu(seg: List[Tuple[str, str]]) -> List[Tuple[str, str]]:

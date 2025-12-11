@@ -29,7 +29,7 @@ from .Core.Resources import ensure_exists, Chinese_G2P_DIR, English_G2P_DIR
 from .Core.TTSPlayer import tts_player
 from .ModelManager import model_manager
 from .Utils.Shared import context
-from .PredefinedCharacter import download_chara
+from .PredefinedCharacter import download_chara, CHARA_LANG, CHARA_ALIAS_MAP
 
 # A module-level private dictionary to store reference audio configurations.
 _reference_audios: Dict[str, dict] = {}
@@ -308,21 +308,17 @@ def load_predefined_character(character_name: str) -> None:
     """
     Download and load a predefined character model for TTS inference.
     """
-    character_name = character_name.lower()
-    character_lang: Dict[str, str] = {
-        'mika': 'Japanese',
-        'feibi': 'Chinese',
-        'thirtyseven': 'English',
-    }
-    if character_name not in character_lang:
+    character_name = character_name.lower().strip()
+    if character_name not in CHARA_ALIAS_MAP:
         logger.error(f"No predefined character model found for {character_name}")
         return
+    character_name = CHARA_ALIAS_MAP[character_name]
 
     save_path = download_chara(character_name)
     model_manager.load_character(
         character_name=character_name,
         model_dir=os.path.join(save_path, 'tts_models'),
-        language=character_lang[character_name],
+        language=CHARA_LANG[character_name],
     )
 
     with open(os.path.join(save_path, "prompt_wav.json"), "r", encoding="utf-8") as f:
@@ -333,10 +329,10 @@ def load_predefined_character(character_name: str) -> None:
     _reference_audios[character_name] = {
         'audio_path': audio_path,
         'audio_text': audio_text,
-        'language': character_lang[character_name],
+        'language': CHARA_LANG[character_name],
     }
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=audio_path,
         prompt_text=audio_text,
-        language=character_lang[character_name],
+        language=CHARA_LANG[character_name],
     )
