@@ -68,7 +68,7 @@ if not os.path.exists(GENIE_DATA_DIR):
     print("⚠️ GenieData folder not found.")
     choice = input("Would you like to download it automatically from HuggingFace? (y/N): ").strip().lower()
     if choice == "y":
-        pass
+        download_genie_data()
 
 # ---- Run directory checks ----
 ensure_exists(HUBERT_MODEL_DIR, "HUBERT_MODEL_DIR")
