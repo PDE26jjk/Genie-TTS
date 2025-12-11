@@ -18,7 +18,7 @@ from PySide6.QtGui import QTextCursor, QCloseEvent
 
 from ..Utils.TextSplitter import TextSplitter
 from .Utils import (
-    generate_output_filenames, truncate_text, FileSelectorWidget, FileSelectionMode, MyComboBox, sanitize_filename,
+    generate_output_filenames, FileSelectorWidget, FileSelectionMode, MyComboBox, sanitize_filename,
     MyTextEdit
 )
 from .AudioPlayer import AudioPlayer
@@ -83,7 +83,8 @@ class PreviewItemWidget(QFrame):
         lbl_id.setStyleSheet("font-weight: bold; color: #555;")
 
         # 文本
-        lbl_text = QLabel(truncate_text(text, 40))
+        lbl_text = QLabel(text)
+        lbl_text.setFixedWidth(240)
         lbl_text.setToolTip(text)
 
         # 按钮 - 播放
