@@ -590,7 +590,7 @@ class TTSWidget(QWidget):
             if save_mode == "保存为多个文件":
                 target_names = generate_output_filenames(folder=out_dir, original_texts=[text_list[index]])
                 save_path = os.path.join(out_dir, target_names[0])
-                sf.write(save_path, data=audio_list[0], samplerate=sr, subtype='PCM_16')
+                sf.write(save_path, data=audio_list[0], samplerate=sr, subtype='FLOAT')
                 self._add_to_preview(text_list[index], save_path)
         else:
             print(f"[WARN] 第 {index + 1} 句返回空音频")

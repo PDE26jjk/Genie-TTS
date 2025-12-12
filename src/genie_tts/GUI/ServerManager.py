@@ -1,4 +1,3 @@
-import numpy as np
 from PySide6.QtCore import Signal, QThread
 
 from ..Utils.Shared import context
@@ -24,6 +23,7 @@ class InferenceWorker(QThread):
                     onnx_model_dir=self.req['onnx_model_dir'],
                     language=self.req['language'],
                 )
+                self.finished.emit(True, "导入角色完成", None)
 
             elif self.mode == 'set_reference_audio':
                 set_reference_audio(
@@ -32,6 +32,7 @@ class InferenceWorker(QThread):
                     audio_text=self.req['audio_text'],
                     language=self.req['language'],
                 )
+                self.finished.emit(True, "设置参考音频完成", None)
 
             elif self.mode == 'tts':
                 gsv_model = model_manager.get(self.req['character_name'])
@@ -46,10 +47,11 @@ class InferenceWorker(QThread):
                     prompt_encoder=gsv_model.PROMPT_ENCODER,
                     language=gsv_model.LANGUAGE,
                 )
+                audio_chunk = audio_chunk.squeeze()
                 try:
                     return_data = {
                         "sample_rate": 32000,
-                        "audio_list": [audio_chunk.astype(np.int16)],
+                        "audio_list": [audio_chunk],
                     }
                     self.finished.emit(True, "推理完成", return_data)
                 except Exception as e:
