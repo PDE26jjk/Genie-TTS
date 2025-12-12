@@ -33,8 +33,6 @@ from .ConverterWidget import ConverterWidget
 CACHE_DIR = './UserData/Cache/GenieGUI'
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-TEMP_MODEL_NAME: str = 'Genie-TTS GUI'
-
 
 # ==================== 后台工作线程 ====================
 
@@ -475,7 +473,7 @@ class TTSWidget(QWidget):
 
     def _chain_import_model(self) -> None:
         req = {
-            "character_name": TEMP_MODEL_NAME,
+            "character_name": self.current_preset_name,
             "onnx_model_dir": self.file_genie.get_path(),
             "language": self.combo_lang.currentText(),
         }
@@ -495,7 +493,7 @@ class TTSWidget(QWidget):
 
     def _chain_set_ref(self) -> None:
         req = {
-            "character_name": TEMP_MODEL_NAME,
+            "character_name": self.current_preset_name,
             "audio_path": self.file_ref_audio.get_path(),
             "audio_text": self.input_ref_text.text().strip(),
             "language": self.combo_lang.currentText(),
@@ -553,7 +551,7 @@ class TTSWidget(QWidget):
 
         # 2. 递归进行：发起当前句子的请求
         req = {
-            "character_name": TEMP_MODEL_NAME,
+            "character_name": self.current_preset_name,
             "text": text_list[index],
         }
         worker = InferenceWorker(req, mode="tts")
