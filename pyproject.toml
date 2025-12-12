@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "genie-tts"
-version = "2.0.1"
+version = "2.0.2"
 authors = [
     { name = "High_Logic", email = "highlogic233@gmail.com" },
 ]
