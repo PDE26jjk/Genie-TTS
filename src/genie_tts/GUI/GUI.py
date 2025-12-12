@@ -49,7 +49,8 @@ class LogRedirector(QObject):
     def write(self, text: Any):
         text = str(text)
         self.textWritten.emit(text)
-        self._old_stdout.write(text)
+        if self._old_stdout is not None:
+            self._old_stdout.write(text)
 
     def flush(self):
         pass

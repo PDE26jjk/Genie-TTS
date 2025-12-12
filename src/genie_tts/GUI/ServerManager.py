@@ -29,10 +29,26 @@ class ServerManager(QThread):
 
     def run(self):
         print("[SYSTEM] 正在启动 TTS 后端服务...")
+
+        if getattr(sys, 'frozen', False):
+            # 打包环境下：运行 <自己.exe> --server --port XXX
+            # 注意：sys.executable 指向 Genie-TTS GUI.exe
+            cmd = [
+                sys.executable,
+                "--server",
+                "--port", str(PORT)
+            ]
+        else:
+            cmd = [
+                sys.executable,
+                SERVER_SCRIPT_PATH,
+                "--port", str(PORT)
+            ]
+
         try:
             # 1. 启动子进程 (保持之前的 subprocess.PIPE 修改不变)
             self._process = subprocess.Popen(
-                [sys.executable, SERVER_SCRIPT_PATH, "--port", str(PORT)],
+                cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
