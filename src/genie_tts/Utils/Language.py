@@ -19,6 +19,11 @@ language_map = {
     "jp": "Japanese",
     "ja": "Japanese",
     "nihongo": "Japanese",
+
+    # Hybrid
+    "hybrid": "Hybrid-Chinese-English",
+    "hybrid-zh-en": "Hybrid-Chinese-English",
+    "hybrid-en-zh": "Hybrid-Chinese-English",
 }
 
 

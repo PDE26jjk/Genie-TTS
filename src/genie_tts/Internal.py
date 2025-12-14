@@ -107,12 +107,15 @@ def load_character(
     check_onnx_model_dir(onnx_model_dir)
 
     language = normalize_language(language)
-    if language not in ['Japanese', 'English', 'Chinese']:
+    if language not in ['Japanese', 'English', 'Chinese', 'Hybrid-Chinese-English']:
         raise ValueError('Unknown language')
 
     if language == 'Chinese':
         ensure_exists(Chinese_G2P_DIR, "Chinese_G2P_DIR")
     elif language == 'English':
+        ensure_exists(English_G2P_DIR, "English_G2P_DIR")
+    elif language == 'Hybrid-Chinese-English':
+        ensure_exists(Chinese_G2P_DIR, "Chinese_G2P_DIR")
         ensure_exists(English_G2P_DIR, "English_G2P_DIR")
 
     model_path: str = os.fspath(onnx_model_dir)
