@@ -81,6 +81,22 @@ import genie_tts as genie
 # 库现在将从指定目录加载资源
 ```
 
+如果你想启用**仅用于中文推理**、用于改善中文韵律的可选 Chinese RoBERTa 文本特征，也可以这样下载：
+
+```python
+import genie_tts as genie
+
+# 只下载可选的 Chinese RoBERTa 资源
+genie.download_roberta_data()
+
+# 或者直接走内置的完整资源下载流程，
+# 该流程现在也会顺带下载可选的 Chinese RoBERTa 资源
+genie.download_genie_data()
+```
+
+这些 RoBERTa 特征仅用于**中文**路径，以改善中文韵律；
+它们**不应该用于**日语 / 英语 / 韩语推理。
+
 ### ⚡️ 快速试用
 
 还没有 GPT-SoVITS 模型？没问题！

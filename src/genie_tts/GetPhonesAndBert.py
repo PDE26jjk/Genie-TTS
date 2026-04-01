@@ -4,6 +4,59 @@ from typing import Tuple, Literal
 from .Utils.Constants import BERT_FEATURE_DIM
 from .ModelManager import model_manager
 
+
+# 不同的 RoBERTa ONNX 导出结果，输入名可能并不完全一致
+# （例如有些需要 token_type_ids，有些接受 repeats）。
+# 这里改成动态构造输入，避免假设只有一种固定导出签名。
+def _build_roberta_inputs(encoded, word2ph: list[int]) -> dict[str, np.ndarray]:
+    input_ids = np.array([encoded.ids], dtype=np.int64)
+    attention_mask = np.array([encoded.attention_mask], dtype=np.int64)
+    input_names = {inp.name for inp in model_manager.roberta_model.get_inputs()}
+
+    ort_inputs: dict[str, np.ndarray] = {}
+    if "input_ids" in input_names:
+        ort_inputs["input_ids"] = input_ids
+    if "attention_mask" in input_names:
+        ort_inputs["attention_mask"] = attention_mask
+    if "token_type_ids" in input_names:
+        ort_inputs["token_type_ids"] = np.zeros_like(input_ids, dtype=np.int64)
+    if "repeats" in input_names:
+        ort_inputs["repeats"] = np.array(word2ph, dtype=np.int64)
+    return ort_inputs
+
+
+# 不同的 RoBERTa ONNX 导出结果，可能直接返回 phone-level 特征，
+# 也可能返回还需要按 word2ph 展开的 token-level 特征。
+# 这里统一做一层归一化，保证下游中文路径行为稳定。
+def _expand_roberta_output(text_bert: np.ndarray, word2ph: list[int], num_phones: int) -> np.ndarray:
+    if text_bert.ndim == 3 and text_bert.shape[0] == 1:
+        text_bert = text_bert[0]
+
+    if text_bert.shape[0] == num_phones:
+        return text_bert.astype(np.float32)
+
+    if text_bert.shape[0] == len(word2ph) + 2:
+        text_bert = text_bert[1:-1]
+
+    if text_bert.shape[0] == len(word2ph):
+        repeated = [
+            np.repeat(text_bert[idx: idx + 1], repeats=count, axis=0)
+            for idx, count in enumerate(word2ph)
+        ]
+        expanded = np.concatenate(repeated, axis=0)
+        if expanded.shape[0] != num_phones:
+            raise ValueError(
+                f"Expanded RoBERTa features to {expanded.shape[0]} phones, expected {num_phones}"
+            )
+        return expanded.astype(np.float32)
+
+    raise ValueError(
+        "Unsupported RoBERTa output layout: "
+        f"got first dimension {text_bert.shape[0]}, expected {num_phones} phones "
+        f"or {len(word2ph)} / {len(word2ph) + 2} token features"
+    )
+
+
 def split_language(text: str) -> list[dict[Literal['language', 'content'], str]]:
     """
     从文本中提取中文和英文部分，返回一个包含语言和内容的列表。
@@ -62,16 +115,13 @@ def _get_phones_and_bert_pure_lang(prompt_text: str, language: str = 'japanese')
         from .G2P.Chinese.ChineseG2P import chinese_to_phones
         text_clean, _, phones, word2ph = chinese_to_phones(prompt_text)
         if model_manager.load_roberta_model():
+            # 原路径默认只存在一种固定的 RoBERTa 输入/输出布局。
+            # 这里对 ONNX 输入和输出都做归一化处理，
+            # 让中文韵律修复可以兼容多种导出的 RoBERTa 变体。
             encoded = model_manager.roberta_tokenizer.encode(text_clean)
-            input_ids = np.array([encoded.ids], dtype=np.int64)
-            attention_mask = np.array([encoded.attention_mask], dtype=np.int64)
-            ort_inputs = {
-                'input_ids': input_ids,
-                'attention_mask': attention_mask,
-                'repeats': np.array(word2ph, dtype=np.int64),
-            }
+            ort_inputs = _build_roberta_inputs(encoded, word2ph)
             outputs = model_manager.roberta_model.run(None, ort_inputs)
-            text_bert = outputs[0].astype(np.float32)
+            text_bert = _expand_roberta_output(outputs[0], word2ph, len(phones))
         else:
             text_bert = np.zeros((len(phones), BERT_FEATURE_DIM), dtype=np.float32)
     elif language.lower() == 'korean':

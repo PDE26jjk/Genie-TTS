@@ -85,6 +85,23 @@ import genie_tts as genie
 # The library will now load resources from the specified directory
 ```
 
+If you want the optional Chinese RoBERTa text features used only for **Chinese inference**
+to improve Chinese prosody, you can also download them with:
+
+```python
+import genie_tts as genie
+
+# Download only the optional Chinese RoBERTa assets
+genie.download_roberta_data()
+
+# Or use the built-in full resource download flow,
+# which now also downloads the optional Chinese RoBERTa assets
+genie.download_genie_data()
+```
+
+These RoBERTa features are intended only for the **Chinese** path to improve Chinese prosody.
+They **should not be used** for non-Chinese inference (Japanese / English / Korean).
+
 ### ⚡️ Quick Tryout
 
 No GPT-SoVITS model yet? No problem!
