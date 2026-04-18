@@ -25,7 +25,7 @@
 推理、ONNX 模型转换、API 服务端以及其他核心功能，旨在提供极致的性能和便利性。
 
 * **✅ 支持的模型版本：** GPT-SoVITS V2, V2ProPlus
-* **✅ 支持的语言：** 日语、英语、中文
+* **✅ 支持的语言：** 日语、英语、中文、韩语
 * **✅ 支持的 Python 版本：** >= 3.9
 
 ---
@@ -139,7 +139,7 @@ import genie_tts as genie
 genie.load_character(
     character_name='<CHARACTER_NAME>',  # 替换为您的角色名称
     onnx_model_dir=r"<PATH_TO_CHARACTER_ONNX_MODEL_DIR>",  # 包含 ONNX 模型的文件夹
-    language='<LANGUAGE_CODE>',  # 替换为语言代码，例如 'en', 'zh', 'jp'
+    language='<LANGUAGE_CODE>',  # 替换为语言代码，例如 'en', 'zh', 'jp', 'kr'
 )
 
 # 第二步：设置参考音频（用于情感和语调克隆）
@@ -216,7 +216,7 @@ genie.start_server(
 
 * [x] **🚀 模型兼容性**
 
-    * [x] 支持 `V2Proplus`。
+    * [x] 支持 `V2ProPlus`。
     * [ ] 支持 `V3`、`V4` 等更多版本。
 
 * [x] **📦 简易部署**
