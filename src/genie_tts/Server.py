@@ -16,7 +16,10 @@ from .Utils.Language import normalize_language
 
 logger = logging.getLogger(__name__)
 
-_reference_audios: Dict[str, dict] = {}
+# Share the reference-audio registry with Internal so characters configured
+# through the Python API (start scripts) are visible to the HTTP endpoints.
+from .Internal import _reference_audios  # noqa: E402
+
 SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
 
 app = FastAPI()

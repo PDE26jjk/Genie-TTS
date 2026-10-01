@@ -186,7 +186,25 @@ class ModelManager:
         )
         self.character_to_language: Dict[str, str] = {}
         self.character_model_paths: Dict[str, str] = {}
-        self.providers = ["CPUExecutionProvider"]
+
+        # Device selection: GENIE_DEVICE=cpu (default) | gpu | dml.
+        # "gpu" uses CUDAExecutionProvider (requires onnxruntime-gpu plus
+        # CUDA 12 / cuDNN 9 DLLs, e.g. via onnxruntime.preload_dlls());
+        # "dml" uses DirectML on any DX12 GPU without CUDA dependencies.
+        device = os.getenv('GENIE_DEVICE', 'cpu').strip().lower()
+        available = onnxruntime.get_available_providers()
+        self.device_option = device
+        if device == 'gpu' and 'CUDAExecutionProvider' in available:
+            self.providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        elif device == 'dml' and 'DmlExecutionProvider' in available:
+            self.providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+        elif device in ('gpu', 'dml'):
+            logger.warning(f"GENIE_DEVICE={device} requested but provider not available "
+                           f"({available}); falling back to CPU.")
+            self.providers = ["CPUExecutionProvider"]
+        else:
+            self.providers = ["CPUExecutionProvider"]
+        logger.info(f"Genie inference device: {self.device_option} -> {self.providers}")
 
         self.cn_hubert: Optional[InferenceSession] = None
         self.speaker_verification_model: Optional[InferenceSession] = None
