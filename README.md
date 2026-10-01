@@ -214,6 +214,70 @@ genie.start_server(
 
 ---
 
+## 🎛️ TTS Relay (System Tray)
+
+`relay/tts_relay_tray.py` is a standalone system-tray app (developed in this
+fork) that owns a **single playback queue** and fronts **both** inference
+backends - the full GPT-SoVITS runtime (`api_v2.py`, torch, real-time) and
+this lightweight Genie ONNX server - so you can switch voices/engines from a
+menu and push text into the queue from any agent or script.
+
+```
+any agent ──HTTP──▶ Relay (127.0.0.1:9881) ──▶ backend 9880 (GPT-SoVITS api_v2)
+   tray ◀──menu/control── (queue + volume)  ──▶ backend 9882 (Genie, CUDA Graph)
+                                     └──▶ speakers (pipelined playback)
+```
+
+Features:
+- Tray menu: start / stop-and-clear the stream, **volume**, **backend switch**
+  (GPT-SoVITS / Genie), model or checkpoint submenu per backend, live status.
+- Pipelined playback: generation of the next utterance runs while the current
+  one is still playing (no gap between queued sentences).
+- Backend switching: for GPT-SoVITS it hot-swaps fine-tuned checkpoints via
+  `/set_gpt_weights` + `/set_sovits_weights` (train → test immediately); for
+  Genie it loads ONNX characters via `/load_character`.
+
+### Setup
+
+Extra dependency only for the tray UI: `pip install pystray pillow`
+(requests / numpy / sounddevice are already Genie dependencies).
+
+1. Edit `relay/tts_relay_config.json`:
+   - `backends`: URL + type of each backend (`gptsovits` or `genie`).
+   - `checkpoints`: GPT-SoVITS fine-tuned checkpoints (paths are resolved by
+     the api_v2 process, so keep them relative to that package).
+   - `genie_characters`: ONNX character dirs for the Genie backend.
+   - `ref_audio` / `prompt_text`: the voice-cloning reference (absolute path).
+   - `test_text`, `volume`, `auto_play`, `seed` (-1 = random prosody).
+2. Start the backends you want (api_v2 from the GPT-SoVITS package,
+   `start_genie_server.py` from this repo).
+3. Start the relay:
+
+```powershell
+cd relay
+..\.venv\Scripts\pythonw.exe tts_relay_tray.py   # pythonw = no console
+```
+
+### HTTP API (default 127.0.0.1:9881)
+
+| Endpoint | Body | Effect |
+|---|---|---|
+| `POST /say` | `{"text": "...", "play": true?}` | enqueue text (auto-plays by default) |
+| `POST /start` / `POST /stop` | - | resume queue / abort current + clear |
+| `POST /backend` | `{"name": "Genie(ONNX)"}` | switch backend |
+| `POST /model` | `{"name": "dq-v2Pro(微调)"}` | switch checkpoint/character |
+| `POST /volume` | `{"volume": 0.3}` | 0.0 – 1.5, persisted |
+| `GET /status` | - | state, queue, backend, model, volume |
+
+Example (PowerShell-friendly, UTF-8 safe):
+
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:9881/say -Method Post ^
+  -ContentType "application/json; charset=utf-8" -Body '{"text":"你好。"}'
+```
+
+---
+
 ## 📝 Roadmap
 
 * [x] **🌐 Language Expansion**

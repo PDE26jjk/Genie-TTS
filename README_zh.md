@@ -208,6 +208,52 @@ genie.start_server(
 
 ---
 
+## 🎛️ TTS 中转托盘
+
+`relay/tts_relay_tray.py` 是本 fork 新增的独立系统托盘程序：持有**唯一一条播放队列**，同时对接两个推理后端——完整版 GPT-SoVITS 运行时（`api_v2.py`，torch，实时）与本仓库的 Genie ONNX 服务——可在菜单里切换引擎/音色，任何 Agent 或脚本都能通过 HTTP 往队列里加文本。
+
+```
+任意Agent ──HTTP──▶ 中转站 (127.0.0.1:9881) ──▶ 后端 9880（GPT-SoVITS api_v2）
+   托盘 ◀──菜单/控制──（队列+音量）          ──▶ 后端 9882（Genie, CUDA Graph）
+                                      └──▶ 音箱（流水线式播放，句间无缝）
+```
+
+功能：
+- 托盘菜单：开始播放 / 停止并清空、**音量**、**后端切换**（GPT-SoVITS / Genie）、每个后端各自的模型子菜单、实时状态行。
+- 流水线播放：播放当前句时后台预生成下一句，多句连播零停顿。
+- 模型热切换：GPT-SoVITS 走 `/set_gpt_weights` + `/set_sovits_weights`（训练完立刻试听）；Genie 走 `/load_character` 加载 ONNX 角色。
+
+### 使用
+
+托盘 UI 只需要额外装 `pip install pystray pillow`（requests / numpy / sounddevice 本来就是 Genie 的依赖）。
+
+1. 编辑 `relay/tts_relay_config.json`：
+   - `backends`：每个后端的 URL 与类型（`gptsovits` 或 `genie`）。
+   - `checkpoints`：GPT-SoVITS 微调权重（相对路径由 api_v2 进程解析，保持相对其包目录）。
+   - `genie_characters`：Genie 后端的 ONNX 角色目录。
+   - `ref_audio` / `prompt_text`：克隆音色的参考音频（绝对路径）。
+   - `test_text`、`volume`、`auto_play`、`seed`（-1 = 韵律随机）。
+2. 启动需要的后端（GPT-SoVITS 整合包的 api_v2、本仓库的 `start_genie_server.py`）。
+3. 启动中转站：
+
+```powershell
+cd relay
+..\.venv\Scripts\pythonw.exe tts_relay_tray.py   # pythonw 不弹控制台
+```
+
+### HTTP API（默认 127.0.0.1:9881）
+
+| 端点 | 请求体 | 作用 |
+|---|---|---|
+| `POST /say` | `{"text": "...", "play": true?}` | 入队文本（默认自动播放） |
+| `POST /start` / `POST /stop` | - | 恢复队列 / 掐断当前并清空 |
+| `POST /backend` | `{"name": "Genie(ONNX)"}` | 切换后端 |
+| `POST /model` | `{"name": "dq-v2Pro(微调)"}` | 切换 checkpoint/角色 |
+| `POST /volume` | `{"volume": 0.3}` | 0.0 – 1.5，持久化 |
+| `GET /status` | - | 状态、队列、后端、模型、音量 |
+
+---
+
 ## 📝 路线图
 
 * [x] **🌐 语言扩展**

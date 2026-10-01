@@ -1,3 +1,7 @@
 ort_gpu/
 genie_server.log
 *.hoisted.onnx
+__pycache__/
+relay.log
+*.pyc
+GenieData/
