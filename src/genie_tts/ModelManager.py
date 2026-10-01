@@ -178,6 +178,53 @@ def load_session_with_fp16_conversion(
         raise e
 
 
+def _hoist_random_noise(stage_onnx_path: str) -> str:
+    """Replace the RandomNormalLike node (CPU-only in ORT's CUDA EP) with a
+    graph input 'rand_noise', forcing graph segmentation and per-step
+    CPU/GPU Memcpy syncs. The hoisted model is cached next to the original.
+    Returns the path to use for session creation."""
+    import tempfile
+
+    out_path = stage_onnx_path + ".hoisted.onnx"
+    if os.path.exists(out_path):
+        return out_path
+
+    import onnx
+    proto = onnx.load(stage_onnx_path, load_external_data=False)
+    if not any(n.op_type == 'RandomNormalLike' for n in proto.graph.node):
+        return stage_onnx_path
+
+    # vocab size = rows of the AR predict layer weight (logits dim)
+    vocab = None
+    for t in proto.graph.initializer:
+        if t.name.endswith('ar_predict_layer.weight') and len(t.dims) == 2:
+            vocab = t.dims[0]
+            break
+
+    for n in proto.graph.node:
+        if n.op_type == 'RandomNormalLike':
+            out_name = n.output[0]
+            last_dim = vocab if vocab else 'vocab'
+            # runtime shape of the noise is rank-1 [vocab]: downstream
+            # Unsqueeze(+1) feeds a rank-2 Concat input, and ORT's static
+            # check requires rank(noise)+1 == 2
+            vi = onnx.helper.make_tensor_value_info('rand_noise', onnx.TensorProto.FLOAT, [last_dim])
+            proto.graph.input.append(vi)
+            n.op_type = 'Identity'
+            del n.input[:]
+            n.input.extend(['rand_noise'])
+            del n.attribute[:]
+            break
+
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(stage_onnx_path), suffix='.tmp')
+    os.close(fd)
+    onnx.save(proto, tmp)
+    os.replace(tmp, out_path)
+    logger.info("Hoisted RandomNormalLike out of the t2s stage decoder graph "
+                f"-> {os.path.basename(out_path)} (vocab={vocab})")
+    return out_path
+
+
 class ModelManager:
     def __init__(self):
         capacity_str = os.getenv('Max_Cached_Character_Models', '3')
@@ -357,6 +404,11 @@ class ModelManager:
                 # 设置 Session Options
                 sess_options = onnxruntime.SessionOptions()
                 sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+                if model_file == GSVModelFile.T2S_STAGE_DECODER_FP32:
+                    # 将 RandomNormalLike（CPU-only 算子）提升为图输入，
+                    # 避免 CUDA/CPU 图分段与每步 24 次 Memcpy 同步。
+                    model_path = _hoist_random_noise(model_path)
 
                 if os.path.exists(model_path):
                     fp16_bin_name = onnx_to_fp16_map.get(model_file)
