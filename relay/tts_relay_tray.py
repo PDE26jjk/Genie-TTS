@@ -91,6 +91,7 @@ class Relay:
         self.audio_q = queue.Queue(maxsize=2048)
         self._play_quit = object()
         self._utt_end = object()
+        self._stream_restart = object()
 
     # ---- backend/model helpers ----
     def backend(self):
@@ -149,11 +150,16 @@ class Relay:
                 break
         stream = self.current_stream
         if stream is not None:
+            # abort() kills sounddevice's blocking-write machinery for THIS
+            # stream object; the play thread must reopen a fresh one.
             try:
-                stream.abort()  # discard device-buffered audio immediately
-                stream.start()
+                stream.abort()
             except Exception:
                 pass
+        try:
+            self.audio_q.put_nowait(self._stream_restart)
+        except queue.Full:
+            pass
         self._refresh_menu()
 
     def switch_model(self, name):
@@ -247,34 +253,50 @@ class Relay:
                     pass
 
     def _play_loop(self):
-        """Playback thread: drains audio_q into the device continuously."""
-        try:
-            stream = sd.OutputStream(samplerate=int(self.cfg["sr"]),
-                                     channels=1, dtype="int16")
-            stream.start()
-        except Exception as e:
-            print("audio device init failed:", e, flush=True)
-            return
-        self.current_stream = stream
-        try:
-            while True:
-                item = self.audio_q.get()
-                if item is self._play_quit:
-                    break
-                if item is self._utt_end or item is None:
-                    continue
-                data = np.frombuffer(item, dtype="<i2")
-                if self.volume != 1.0:
-                    data = np.clip(data.astype(np.float32) * self.volume,
-                                   -32767, 32767).astype("<i2")
+        """Playback thread: drains audio_q into the device continuously.
+
+        Owns the stream lifecycle: after every abort (stop/switch) or write
+        error the stream is closed and a fresh one opened, because
+        OutputStream.abort() permanently kills sounddevice's blocking-write
+        machinery for that stream object (writes would go into a dead ring
+        buffer -> permanent silence)."""
+        while True:
+            try:
+                stream = sd.OutputStream(samplerate=int(self.cfg["sr"]),
+                                         channels=1, dtype="int16")
+                stream.start()
+            except Exception as e:
+                print("audio device init failed:", e, flush=True)
+                return
+            self.current_stream = stream
+            reopen = False
+            try:
+                while True:
+                    item = self.audio_q.get()
+                    if item is self._play_quit:
+                        return
+                    if item is self._stream_restart:
+                        reopen = True
+                        break
+                    if item is self._utt_end or item is None:
+                        continue
+                    data = np.frombuffer(item, dtype="<i2")
+                    if self.volume != 1.0:
+                        data = np.clip(data.astype(np.float32) * self.volume,
+                                       -32767, 32767).astype("<i2")
+                    try:
+                        stream.write(data)
+                    except Exception:
+                        # stream was aborted underneath us; reopen a fresh one
+                        reopen = True
+                        break
+            finally:
+                self.current_stream = None
                 try:
-                    stream.write(data)
+                    stream.close()
                 except Exception:
-                    # stop() aborted the stream to flush the device buffer;
-                    # it restarts the stream, so keep the loop alive
-                    continue
-        finally:
-            self.current_stream = None
+                    pass
+            # loop: reopen a fresh stream and keep serving the queue
 
     def _generate(self, text):
         self.abort.clear()
