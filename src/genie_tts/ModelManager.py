@@ -364,7 +364,7 @@ class ModelManager:
             logger.info(
                 f"Character {character_name.capitalize()} loaded successfully.\n"
                 f"- Model Path: {model_dir}\n"
-                f"- Model Type: {'V2ProPlus' if is_v2pp else 'V2'}"
+                f"- Model Type: {'V2Pro/V2ProPlus' if is_v2pp else 'V2'}"
             )
 
             self.character_to_model[character_name] = model_dict

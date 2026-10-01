@@ -1,6 +1,6 @@
 import onnxruntime as ort
 import numpy as np
-from typing import List, Optional
+from typing import Iterator, List, Optional
 import threading
 
 from ..Audio.ReferenceAudio import ReferenceAudio
@@ -8,11 +8,21 @@ from ..GetPhonesAndBert import get_phones_and_bert
 
 MAX_T2S_LEN = 1000
 
+# Streaming chunking defaults, tuned after GPT-SoVITS streaming_mode=2
+# (min_chunk_length=16). The vocoder re-decodes the whole semantic prefix and
+# only the tail beyond already-yielded audio is emitted, blended with a short
+# crossfade to hide the re-decode boundary.
+STREAM_MIN_CHUNK_TOKENS = 16  # semantic tokens (25 Hz) per emitted chunk (~0.64 s)
+STREAM_FADE_SAMPLES = 640     # 20 ms crossfade at 32 kHz
+
 
 class GENIE:
     def __init__(self):
         self.stop_event: threading.Event = threading.Event()
 
+    # ------------------------------------------------------------------
+    # Non-streaming API (unchanged signature), now built on tts_stream.
+    # ------------------------------------------------------------------
     def tts(
             self,
             text: str,
@@ -24,43 +34,103 @@ class GENIE:
             prompt_encoder: Optional[ort.InferenceSession],
             language: str = 'japanese',
     ) -> Optional[np.ndarray]:
-        text = '。' + text  # 防止漏第一句。
-        text_seq, text_bert = get_phones_and_bert(text, language=language)
-
-        semantic_tokens: np.ndarray = self.t2s_cpu(
-            ref_seq=prompt_audio.phonemes_seq,
-            ref_bert=prompt_audio.text_bert,
-            text_seq=text_seq,
-            text_bert=text_bert,
-            ssl_content=prompt_audio.ssl_content,
+        pieces = list(self.tts_stream(
+            text=text,
+            prompt_audio=prompt_audio,
             encoder=encoder,
             first_stage_decoder=first_stage_decoder,
             stage_decoder=stage_decoder,
-        )
+            vocoder=vocoder,
+            prompt_encoder=prompt_encoder,
+            language=language,
+        ))
+        if not pieces:
+            return None
+        return np.concatenate(pieces, axis=-1)[None, :]
 
-        eos_indices = np.where(semantic_tokens >= 1024)  # 剔除不合法的元素，例如 EOS Token。
-        if len(eos_indices[0]) > 0:
-            first_eos_index = eos_indices[-1][0]
-            semantic_tokens = semantic_tokens[..., :first_eos_index]
+    # ------------------------------------------------------------------
+    # Streaming API: yields float32 audio chunks while the T2S decoder is
+    # still generating semantic tokens (generate-while-play).
+    # ------------------------------------------------------------------
+    def tts_stream(
+            self,
+            text: str,
+            prompt_audio: ReferenceAudio,
+            encoder: ort.InferenceSession,
+            first_stage_decoder: ort.InferenceSession,
+            stage_decoder: ort.InferenceSession,
+            vocoder: ort.InferenceSession,
+            prompt_encoder: Optional[ort.InferenceSession],
+            language: str = 'japanese',
+            min_chunk_tokens: int = STREAM_MIN_CHUNK_TOKENS,
+            fade_samples: int = STREAM_FADE_SAMPLES,
+    ) -> Iterator[np.ndarray]:
+        text = '。' + text  # 防止漏第一句。
+        text_seq, text_bert = get_phones_and_bert(text, language=language)
 
-        if prompt_encoder is None:
-            return vocoder.run(None, {
-                "text_seq": text_seq,
-                "pred_semantic": semantic_tokens,
-                "ref_audio": prompt_audio.audio_32k
-            })[0]
-        else:
-            # V2ProPlus 新增。
+        # V2Pro/V2ProPlus: speaker embeddings are shared across all chunks.
+        if prompt_encoder is not None:
             prompt_audio.update_global_emb(prompt_encoder=prompt_encoder)
-            audio_chunk = vocoder.run(None, {
-                "text_seq": text_seq,
-                "pred_semantic": semantic_tokens,
-                "ge": prompt_audio.global_emb,
-                "ge_advanced": prompt_audio.global_emb_advanced,
-            })[0]
-            return audio_chunk
+        is_pro = prompt_encoder is not None
 
-    def t2s_cpu(
+        def decode(tokens: np.ndarray) -> Optional[np.ndarray]:
+            if tokens is None or tokens.shape[-1] == 0:
+                return None
+            feed = {"text_seq": text_seq, "pred_semantic": tokens}
+            if is_pro:
+                feed["ge"] = prompt_audio.global_emb
+                feed["ge_advanced"] = prompt_audio.global_emb_advanced
+            else:
+                feed["ref_audio"] = prompt_audio.audio_32k
+            return vocoder.run(None, feed)[0]
+
+        sent = 0      # samples of the ideal signal already emitted
+        tail = None   # held-back samples (fade window) not yet emitted
+        ramp = np.linspace(0.0, 1.0, fade_samples, dtype=np.float32)
+
+        for tokens, is_final in self._t2s_stream(
+                ref_seq=prompt_audio.phonemes_seq,
+                ref_bert=prompt_audio.text_bert,
+                text_seq=text_seq,
+                text_bert=text_bert,
+                ssl_content=prompt_audio.ssl_content,
+                encoder=encoder,
+                first_stage_decoder=first_stage_decoder,
+                stage_decoder=stage_decoder,
+                chunk_tokens=min_chunk_tokens,
+        ):
+            if self.stop_event.is_set():
+                return
+            full = decode(tokens)
+            if full is None:
+                continue
+            if full.ndim == 2:
+                full = full[0]
+            length = full.shape[-1]
+            if is_final:
+                if tail is None:
+                    if length > sent:
+                        yield full[sent:]
+                elif length > sent + fade_samples:
+                    blended = tail * (1.0 - ramp) + full[sent:sent + fade_samples] * ramp
+                    yield np.concatenate([blended, full[sent + fade_samples:]], axis=-1)
+                else:
+                    # Degenerate final chunk: flush without blending.
+                    yield np.concatenate([tail, full[sent:]], axis=-1)
+                return
+
+            new_end = length - fade_samples
+            if new_end <= sent:
+                continue  # not enough new audio to emit yet
+            if tail is None:
+                yield full[:new_end]
+            else:
+                blended = tail * (1.0 - ramp) + full[sent:sent + fade_samples] * ramp
+                yield np.concatenate([blended, full[sent + fade_samples:new_end]], axis=-1)
+            sent = new_end
+            tail = full[new_end:]
+
+    def _t2s_stream(
             self,
             ref_seq: np.ndarray,
             ref_bert: np.ndarray,
@@ -70,8 +140,9 @@ class GENIE:
             encoder: ort.InferenceSession,
             first_stage_decoder: ort.InferenceSession,
             stage_decoder: ort.InferenceSession,
-    ) -> Optional[np.ndarray]:
-        """在CPU上运行T2S模型"""
+            chunk_tokens: int,
+    ) -> Iterator[tuple[np.ndarray, bool]]:
+        """Incremental T2S decoding; yields (generated token prefix, is_final)."""
         # Encoder
         x, prompts = encoder.run(
             None,
@@ -94,7 +165,7 @@ class GENIE:
         idx: int = 0
         for idx in range(0, 500):
             if self.stop_event.is_set():
-                return None
+                return
             input_feed = {
                 name: data
                 for name, data in zip(input_names, [y, y_emb, *present_key_values])
@@ -105,8 +176,19 @@ class GENIE:
             if stop_condition_tensor:
                 break
 
+            # Emit the token prefix on chunk boundaries for streaming decode.
+            if (idx + 1) % chunk_tokens == 0:
+                yield np.expand_dims(y[:, -idx:], axis=0), False
+
+        if self.stop_event.is_set():
+            return
         y[0, -1] = 0
-        return np.expand_dims(y[:, -idx:], axis=0)
+        tokens = np.expand_dims(y[:, -idx:], axis=0)
+        # Trim anything at/after EOS (same rule as the non-streaming path).
+        eos_indices = np.where(tokens >= 1024)
+        if len(eos_indices[0]) > 0:
+            tokens = tokens[..., :eos_indices[-1][0]]
+        yield tokens, True
 
 
 tts_client: GENIE = GENIE()

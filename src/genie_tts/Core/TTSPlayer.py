@@ -84,7 +84,7 @@ class TTSPlayer:
                     continue
 
                 tts_client.stop_event.clear()
-                audio_chunk = tts_client.tts(
+                audio_stream = tts_client.tts_stream(
                     text=sentence,
                     prompt_audio=context.current_prompt_audio,
                     encoder=gsv_model.T2S_ENCODER,
@@ -95,7 +95,15 @@ class TTSPlayer:
                     language=gsv_model.LANGUAGE,
                 )
 
-                if audio_chunk is not None:
+                # Intra-sentence streaming: dispatch each audio chunk as soon
+                # as it is decoded, so playback/API starts before the sentence
+                # finishes generating.
+                for audio_chunk in audio_stream:
+                    if self._stop_event.is_set():
+                        tts_client.stop_event.set()
+                        break
+                    if audio_chunk is None:
+                        continue
                     if self._play:
                         self._audio_queue.put(audio_chunk)
                     if self._current_save_path:

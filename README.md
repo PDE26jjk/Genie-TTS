@@ -25,7 +25,7 @@
 project [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS). It integrates TTS inference, ONNX model conversion, API
 server, and other core features, aiming to provide ultimate performance and convenience.
 
-* **✅ Supported Model Version:** GPT-SoVITS V2, V2ProPlus
+* **✅ Supported Model Version:** GPT-SoVITS V2, V2Pro, V2ProPlus
 * **✅ Supported Language:** Japanese, English, Chinese, Korean
 * **✅ Supported Python Version:** >= 3.10
 
@@ -180,7 +180,7 @@ pip install torch
 
 Use the built-in conversion tool:
 
-> **Tip:** `convert_to_onnx` currently supports V2 and V2ProPlus models.
+> **Tip:** `convert_to_onnx` currently supports V2, V2Pro and V2ProPlus models (pass `version="v2Pro"` explicitly for v2Pro checkpoints; the auto-detection by file size cannot distinguish v2Pro from v2ProPlus, which is fine because they share the same architecture).
 
 ```python
 import genie_tts as genie
@@ -222,7 +222,7 @@ genie.start_server(
 
 * [x] **🚀 Model Compatibility**
 
-    * [x] Support for `V2ProPlus`.
+    * [x] Support for `V2Pro` and `V2ProPlus`.
     * [ ] Support for `V3`, `V4`, and more.
 
 * [x] **📦 Easy Deployment**

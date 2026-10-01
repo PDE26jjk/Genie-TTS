@@ -24,7 +24,7 @@
 **GENIE** 是一个基于开源 TTS 项目 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 构建的轻量级推理引擎。它集成了 TTS
 推理、ONNX 模型转换、API 服务端以及其他核心功能，旨在提供极致的性能和便利性。
 
-* **✅ 支持的模型版本：** GPT-SoVITS V2, V2ProPlus
+* **✅ 支持的模型版本：** GPT-SoVITS V2, V2Pro, V2ProPlus
 * **✅ 支持的语言：** 日语、英语、中文、韩语
 * **✅ 支持的 Python 版本：** >= 3.10
 
@@ -174,7 +174,7 @@ pip install torch
 
 使用内置的转换工具：
 
-> **提示：** `convert_to_onnx` 目前支持 V2 和 V2ProPlus 模型。
+> **提示：** `convert_to_onnx` 目前支持 V2、V2Pro 和 V2ProPlus 模型（v2Pro 权重请显式传 `version="v2Pro"`；按文件大小自动判断无法区分 v2Pro 与 v2ProPlus，但由于两者共享同一架构，走同一转换路径即可）。
 
 ```python
 import genie_tts as genie
@@ -216,7 +216,7 @@ genie.start_server(
 
 * [x] **🚀 模型兼容性**
 
-    * [x] 支持 `V2ProPlus`。
+    * [x] 支持 `V2Pro`、`V2ProPlus`。
     * [ ] 支持 `V3`、`V4` 等更多版本。
 
 * [x] **📦 简易部署**

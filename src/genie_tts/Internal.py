@@ -327,6 +327,7 @@ def convert_to_onnx(
         torch_ckpt_path: Union[str, PathLike],
         torch_pth_path: Union[str, PathLike],
         output_dir: Union[str, PathLike],
+        version: str = "auto",
 ) -> None:
     """
     Converts PyTorch model checkpoints to the ONNX format.
@@ -337,6 +338,8 @@ def convert_to_onnx(
         torch_ckpt_path (str | PathLike): The path to the T2S model (.ckpt) file.
         torch_pth_path (str | PathLike): The path to the VITS model (.pth) file.
         output_dir (str | PathLike): The directory where the ONNX models will be saved.
+        version (str): "auto" (default) guesses from the .pth file size; "v2",
+            "v2Pro" or "v2ProPlus" forces a specific converter.
     """
     try:
         import torch
@@ -354,6 +357,7 @@ def convert_to_onnx(
         torch_pth_path=torch_pth_path,
         torch_ckpt_path=torch_ckpt_path,
         output_dir=output_dir,
+        version=version,
     )
 
 
