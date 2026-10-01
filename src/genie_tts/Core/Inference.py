@@ -21,11 +21,18 @@ STREAM_FADE_SAMPLES = 640     # 20 ms crossfade at 32 kHz
 
 
 class StaticT2SEngine:
-    """Wraps t2s_static.onnx (single decode step, static shapes) with an ORT
-    session configured for CUDA graph capture + replay. Pure ORT: all buffer
-    traffic (H2D of token/positions, D2D of the KV cache, D2H of logits) goes
-    through a small Identity-graph "update" session, so no torch is needed in
-    the server process."""
+    """Single-session CUDA-graph decode of t2s_static.onnx.
+
+    Design (validated against the ORT 1.30 crash we hit earlier):
+      - ONE session with enable_cuda_graph; scalars (token / pe_pos / kv_pos)
+        are re-bound each step via bind_cpu_input, which the replay honors.
+      - The KV outputs are bound ALIASED onto the input OrtValues: the
+        in-graph ScatterElements writes the new K/V after every reader, so
+        the cache updates in place with no copy session (the previous
+        mixed-device copy session was what segfaulted next to the captured
+        memory pool).
+      - No torch anywhere; reset() H2D-loads the prefill cache via
+        update_inplace with a full-size padded array."""
 
     def __init__(self, onnx_path: str):
         if "CUDAExecutionProvider" not in ort.get_available_providers():
@@ -33,97 +40,50 @@ class StaticT2SEngine:
         so = ort.SessionOptions()
         so.add_session_config_entry("enable_cuda_graph", "1")
         self.sess = ort.InferenceSession(onnx_path, so, providers=["CUDAExecutionProvider"])
-        ins = {i.name: i.shape for i in self.sess.get_inputs()}
         outs = {o.name: o.shape for o in self.sess.get_outputs()}
+        ins = {i.name: i.shape for i in self.sess.get_inputs()}
         self.L = ins["kv_k_in"][0]
         self.max_len = ins["kv_k_in"][2]
         self.H = ins["kv_k_in"][3]
         self.D = ins["kv_k_in"][4]
         self.vocab = outs["logits"][1] if isinstance(outs["logits"][1], int) else 1025
 
-        # GPU-resident buffers (created once; addresses never change)
-        mk = lambda arr: ort.OrtValue.ortvalue_from_numpy(arr, device_type="cuda", device_id=0)
-        self.token_b = mk(np.zeros((1, 1), dtype=np.int64))
-        self.pe_pos_b = mk(np.zeros((1,), dtype=np.int64))
-        self.kv_pos_b = mk(np.zeros((1,), dtype=np.int64))
-        self.kvk_in = mk(np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32))
-        self.kvv_in = mk(np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32))
-        self.logits_b = mk(np.zeros((1, self.vocab), dtype=np.float32))
-        self.kvk_out = mk(np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32))
-        self.kvv_out = mk(np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32))
+        self.kvk = ort.OrtValue.ortvalue_from_numpy(
+            np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32), "cuda", 0)
+        self.kvv = ort.OrtValue.ortvalue_from_numpy(
+            np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32), "cuda", 0)
+        self.logits_b = ort.OrtValue.ortvalue_from_numpy(
+            np.zeros((1, self.vocab), dtype=np.float32), "cuda", 0)
 
-        io = self.sess.io_binding()
-        io.bind_ortvalue_input("token_id", self.token_b)
-        io.bind_ortvalue_input("input_pos", self.pe_pos_b)
-        io.bind_ortvalue_input("kv_pos", self.kv_pos_b)
-        io.bind_ortvalue_input("kv_k_in", self.kvk_in)
-        io.bind_ortvalue_input("kv_v_in", self.kvv_in)
-        io.bind_ortvalue_output("logits", self.logits_b)
-        io.bind_ortvalue_output("kv_k_out", self.kvk_in)  # alias: write in place
-        io.bind_ortvalue_output("kv_v_out", self.kvv_in)  # alias
-        self.io = io
-
-        # Identity-graph update session:
-        #   inputs  (CPU): token, pe_pos, kv_pos      (small, new values per step)
-        #   inputs  (GPU): kvk_src, kvv_src           (main-session outputs, or CPU for reset)
-        #   outputs (GPU): token_b, pe_pos_b, kv_pos_b, kvk_in, kvv_in  (in-place)
-        s_dims = [str(self.L), "b", str(self.max_len), str(self.H), str(self.D)]
-        s_in = [
-            ("i_token", TensorProto.INT64, [1, 1]),
-            ("i_pe_pos", TensorProto.INT64, [1]),
-            ("i_kv_pos", TensorProto.INT64, [1]),
-            ("i_kvk_src", TensorProto.FLOAT, s_dims),
-            ("i_kvv_src", TensorProto.FLOAT, s_dims),
-        ]
-        s_out = [
-            ("o_token", TensorProto.INT64, [1, 1]),
-            ("o_pe_pos", TensorProto.INT64, [1]),
-            ("o_kv_pos", TensorProto.INT64, [1]),
-            ("o_kvk", TensorProto.FLOAT, s_dims),
-            ("o_kvv", TensorProto.FLOAT, s_dims),
-        ]
-        inputs = [helper.make_tensor_value_info(n, t, sh) for n, t, sh in s_in]
-        outputs = [helper.make_tensor_value_info(n, t, sh) for n, t, sh in s_out]
-        nodes = [helper.make_node("Identity", [i[0]], [o[0]]) for i, o in zip(s_in, s_out)]
-        graph = helper.make_graph(nodes, "update", inputs, outputs)
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
-        model.ir_version = 8
-        self.update_sess = ort.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-        self.io_update = self.update_sess.io_binding()
-        self.io_update.bind_ortvalue_output("o_token", self.token_b)
-        self.io_update.bind_ortvalue_output("o_pe_pos", self.pe_pos_b)
-        self.io_update.bind_ortvalue_output("o_kv_pos", self.kv_pos_b)
-        self.io_update.bind_ortvalue_output("o_kvk", self.kvk_in)
-        self.io_update.bind_ortvalue_output("o_kvv", self.kvv_in)
-        # step-time sources: main-session outputs (GPU OrtValues)
-        self.io_update.bind_ortvalue_input("i_kvk_src", self.kvk_out)
-        self.io_update.bind_ortvalue_input("i_kvv_src", self.kvv_out)
+        self.io = self.sess.io_binding()
+        self.io.bind_ortvalue_input("kv_k_in", self.kvk)
+        self.io.bind_ortvalue_input("kv_v_in", self.kvv)
+        self.io.bind_ortvalue_output("logits", self.logits_b)
+        self.io.bind_ortvalue_output("kv_k_out", self.kvk)  # alias: in-place
+        self.io.bind_ortvalue_output("kv_v_out", self.kvv)  # alias: in-place
+        self._warm = False
 
     def reset(self, present: List[np.ndarray], past_len: int):
-        """Load the prefill KV (text + prompt) from the first-stage graph into
-        the static buffers. present is interleaved [pk0, pv0, pk1, pv1, ...]."""
+        """H2D-load the prefill KV (interleaved [pk0, pv0, pk1, pv1, ...])
+        produced by the first-stage graph. Full-size padded arrays so
+        update_inplace sizes match."""
         full_k = np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32)
         full_v = np.zeros_like(full_k)
         for l in range(self.L):
             full_k[l, 0, :past_len] = present[2 * l].reshape(past_len, self.H, self.D)
             full_v[l, 0, :past_len] = present[2 * l + 1].reshape(past_len, self.H, self.D)
-        # H2D through the update session: bind the CPU arrays as sources
-        self.io_update.bind_input("i_kvk_src", "cpu", 0, np.float32, list(full_k.shape), full_k.ctypes.data)
-        self.io_update.bind_input("i_kvv_src", "cpu", 0, np.float32, list(full_v.shape), full_v.ctypes.data)
-        self.update_sess.run_with_iobinding(self.io_update)
-        # restore the step-time GPU sources
-        self.io_update.bind_ortvalue_input("i_kvk_src", self.kvk_out)
-        self.io_update.bind_ortvalue_input("i_kvv_src", self.kvv_out)
+        self.kvk.update_inplace(full_k)
+        self.kvv.update_inplace(full_v)
+
+    def _bind_scalars(self, token: int, pe_pos: int, kv_pos: int):
+        self.io.bind_cpu_input("token_id", np.array([[token]], dtype=np.int64))
+        self.io.bind_cpu_input("input_pos", np.array([pe_pos], dtype=np.int64))
+        self.io.bind_cpu_input("kv_pos", np.array([kv_pos], dtype=np.int64))
 
     def step(self, token: int, pe_pos: int, kv_pos: int) -> np.ndarray:
-        self.io_update.bind_input("i_token", "cpu", 0, np.int64, [1, 1],
-                                  np.array([[token]], dtype=np.int64).ctypes.data)
-        self.io_update.bind_input("i_pe_pos", "cpu", 0, np.int64, [1],
-                                  np.array([pe_pos], dtype=np.int64).ctypes.data)
-        self.io_update.bind_input("i_kv_pos", "cpu", 0, np.int64, [1],
-                                  np.array([kv_pos], dtype=np.int64).ctypes.data)
-        self.update_sess.run_with_iobinding(self.io_update)
+        self._bind_scalars(token, pe_pos, kv_pos)
         self.sess.run_with_iobinding(self.io)
+        self._warm = True
         return self.logits_b.numpy()[0]
 
 

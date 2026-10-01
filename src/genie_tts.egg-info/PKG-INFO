@@ -1,0 +1,39 @@
+Metadata-Version: 2.4
+Name: genie-tts
+Version: 2.0.2
+Summary: GPT-SoVITS ONNX Inference Engine & Model Converter
+Author-email: High_Logic <highlogic233@gmail.com>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/High-Logic/Genie
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.10
+License-File: LICENSE
+Requires-Dist: onnx
+Requires-Dist: onnxruntime==1.22.1
+Requires-Dist: tokenizers
+Requires-Dist: numpy
+Requires-Dist: soundfile
+Requires-Dist: soxr
+Requires-Dist: pyyaml
+Requires-Dist: sounddevice
+Requires-Dist: pydantic
+Requires-Dist: huggingface_hub[hf_xet]
+Requires-Dist: fastapi
+Requires-Dist: uvicorn[standard]
+Requires-Dist: pyopenjtalk-plus
+Requires-Dist: nltk
+Requires-Dist: pypinyin
+Requires-Dist: g2pM
+Requires-Dist: jieba_fast
+Requires-Dist: jamo
+Requires-Dist: ko_pron
+Requires-Dist: g2pk2
+Requires-Dist: eunjeon
+Provides-Extra: gui
+Requires-Dist: PySide6; extra == "gui"
+Dynamic: license-file
