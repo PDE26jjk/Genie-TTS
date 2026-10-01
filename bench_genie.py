@@ -6,13 +6,16 @@ import time
 
 import requests
 
+SESSION = requests.Session()
+SESSION.trust_env = False  # bypass system proxy (Fiddler) for localhost
+
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:9882"
 TEXT = "你好，我是基于 ONNX 的轻量后端，现在 testing streaming output，延迟应该比大运行时低不少。"
 
 payload = {"character_name": "dq", "text": TEXT}
 t0 = time.perf_counter()
 pieces = []
-with requests.post(BASE + "/tts", json=payload, stream=True, timeout=300) as r:
+with SESSION.post(BASE + "/tts", json=payload, stream=True, timeout=300) as r:
     r.raise_for_status()
     for piece in r.iter_content(chunk_size=8192):
         now = time.perf_counter() - t0

@@ -38,6 +38,8 @@ class GSVModelFile:
     PROMPT_ENCODER: str = 'prompt_encoder_fp32.onnx'
     PROMPT_ENCODER_WEIGHT_FP16: str = 'prompt_encoder_fp16.bin'
 
+    T2S_STATIC_ONNX: Optional[str] = None
+
     HUBERT_MODEL = os.path.join(HUBERT_MODEL_DIR, "chinese-hubert-base.onnx")
     HUBERT_MODEL_WEIGHT_FP16 = os.path.join(HUBERT_MODEL_DIR, "chinese-hubert-base_weights_fp16.bin")
 
@@ -54,6 +56,7 @@ class GSVModel:
     VITS: InferenceSession
     PROMPT_ENCODER: Optional[InferenceSession] = None
     PROMPT_ENCODER_PATH: Optional[str] = None
+    T2S_STATIC: object = None
 
 
 # 去重候选目录，同时保留搜索顺序，避免重复扫描相同路径。
@@ -349,6 +352,7 @@ class ModelManager:
                 VITS=model_map[GSVModelFile.VITS_FP32],
                 PROMPT_ENCODER=model_map[GSVModelFile.PROMPT_ENCODER],
                 PROMPT_ENCODER_PATH=prompt_encoder_path,
+                T2S_STATIC=model_map.get('T2S_STATIC'),
             )
         if character_name in self.character_model_paths:
             model_dir = self.character_model_paths[character_name]
@@ -378,6 +382,9 @@ class ModelManager:
             return True
 
         model_dict: Dict[str, Optional[InferenceSession]] = {}
+
+        static_onnx = os.path.join(model_dir, 't2s_static.onnx')
+        GSVModelFile.T2S_STATIC_ONNX = static_onnx if os.path.exists(static_onnx) else None
 
         # 定义 ONNX 文件到 FP16 Bin 文件的映射关系
         onnx_to_fp16_map = {
@@ -428,6 +435,22 @@ class ModelManager:
                     model_dict[model_file] = None
                 else:
                     raise FileNotFoundError(f'文件 {model_path} 不存在！')
+
+            # Optional static CUDA-graph t2s decode step (t2s_static.onnx
+            # produced by export_static_t2s.py); requires CUDA torch.
+            if os.getenv('GENIE_STATIC_DECODE', '0') == '1' and GSVModelFile.T2S_STATIC_ONNX is not None:
+                # OPT-IN: the CUDA-graph decode is numerically verified and
+                # reaches ~13.9 ms/step in isolation, but ORT 1.30 segfaults
+                # when its captured memory pool coexists with the mixed-device
+                # copy sessions in the server process (upstream issue).
+                try:
+                    from .Core.Inference import StaticT2SEngine
+                    model_dict['T2S_STATIC'] = StaticT2SEngine(GSVModelFile.T2S_STATIC_ONNX)
+                except Exception as e:
+                    logger.warning(f"Static t2s engine unavailable: {e}")
+                    model_dict['T2S_STATIC'] = None
+            else:
+                model_dict['T2S_STATIC'] = None
 
             # 日志信息
             is_v2pp = model_dict[GSVModelFile.PROMPT_ENCODER] is not None

@@ -93,6 +93,7 @@ class TTSPlayer:
                     vocoder=gsv_model.VITS,
                     prompt_encoder=gsv_model.PROMPT_ENCODER,
                     language=gsv_model.LANGUAGE,
+                    static_engine=gsv_model.T2S_STATIC,
                 )
 
                 # Intra-sentence streaming: dispatch each audio chunk as soon

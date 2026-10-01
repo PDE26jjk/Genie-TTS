@@ -18,6 +18,7 @@
 import argparse
 import json
 import os
+import sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "genie_server_config.json")
@@ -26,6 +27,8 @@ with open(CONFIG_FILE, encoding="utf-8") as f:
     cfg = json.load(f)
 
 os.environ.setdefault("GENIE_DEVICE", cfg.get("device", "cpu"))
+os.environ.setdefault("GENIE_STATIC_DECODE", "1" if cfg.get("static_decode") else "0")
+
 
 # DLL directories must be registered before the first CUDA session is created
 for d in cfg.get("dll_dirs", []):
