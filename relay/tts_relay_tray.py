@@ -14,6 +14,7 @@
 # Run:  runtime\pythonw.exe tts_relay_tray.py   (pythonw hides the console)
 import json
 import os
+import sys
 import queue
 import threading
 import time
@@ -557,7 +558,18 @@ def main():
     relay = Relay(cfg)
     Handler.relay = relay
 
-    httpd = ThreadingHTTPServer((cfg["listen_host"], int(cfg["listen_port"])), Handler)
+    # Exclusive bind: http.server sets SO_REUSEADDR, which on Windows
+    # silently allows a second instance to double-bind the same port -
+    # two relays then both play audio and split the queue. Fail loudly.
+    class ExclusiveServer(ThreadingHTTPServer):
+        allow_reuse_address = False
+
+    try:
+        httpd = ExclusiveServer((cfg["listen_host"], int(cfg["listen_port"])), Handler)
+    except OSError as e:
+        print(f"another relay instance is probably running on port "
+              f"{cfg['listen_port']} ({e}); exiting.", flush=True)
+        sys.exit(1)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     threading.Thread(target=relay.gen_loop, daemon=True).start()
     threading.Thread(target=relay._play_loop, daemon=True).start()
