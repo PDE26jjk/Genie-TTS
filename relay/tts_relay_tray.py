@@ -373,7 +373,46 @@ class Relay:
                     pass
             # loop: reopen a fresh stream and keep serving the queue
 
+    def _split_text(self, text: str) -> list:
+        limit = int(self.backend().get("max_chunk_chars", 90))
+        """The t2s context fits roughly 90 Chinese chars per utterance
+        (GPU static KV=800 minus reference/history; CPU dynamic loop is
+        500 steps) - longer text gets force-truncated mid-sentence by the
+        model, so pack sentences into chunks below the limit."""
+        import re
+        text = text.strip()
+        if len(text) <= limit:
+            return [text]
+        pieces = []
+        for sent in re.split(r"(?<=[。！？；!?…])", text):
+            sent = sent.strip()
+            if not sent:
+                continue
+            while len(sent) > limit:
+                cut = sent.rfind("，", 0, limit + 1)
+                if cut < limit // 2:
+                    cut = limit
+                pieces.append(sent[:cut])
+                sent = sent[cut:].lstrip("，、 ")
+            pieces.append(sent)
+        chunks, cur = [], ""
+        for piece in pieces:
+            if cur and len(cur) + len(piece) > limit:
+                chunks.append(cur)
+                cur = piece
+            else:
+                cur = (cur + piece) if cur else piece
+        if cur:
+            chunks.append(cur)
+        return chunks
+
     def _generate(self, text):
+        for chunk in self._split_text(text):
+            if self.abort.is_set():
+                return
+            self._generate_one(chunk)
+
+    def _generate_one(self, text):
         self.abort.clear()
         b = self.backend()
         # per-backend prebuffer: fast backends start almost immediately,
