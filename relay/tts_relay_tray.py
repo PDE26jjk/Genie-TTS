@@ -337,10 +337,16 @@ class Relay:
             anchor_ref, _ = self._ref_pair()
             ref_audio, prompt_text = self._ref_pair()
             if capture:
-                concat_path, concat_text = self._build_concat_ref()
-                if concat_path is not None:
-                    ref_audio, prompt_text = concat_path, concat_text
-                    print(f"[relay] concat ref: {concat_text[:40]}...", flush=True)
+                # generating a sentence that is already in the reference makes
+                # the model echo it (repeats/mismatch) - fall back to anchor
+                norm = text.strip()
+                if any(u[1].strip() == norm for u in self._carry_utts):
+                    print("[relay] carry skipped: current text duplicates a window entry", flush=True)
+                else:
+                    concat_path, concat_text = self._build_concat_ref()
+                    if concat_path is not None:
+                        ref_audio, prompt_text = concat_path, concat_text
+                        print(f"[relay] concat ref: {concat_text[:40]}...", flush=True)
             payload = {
                 "text": text,
                 "text_lang": self.cfg["text_lang"],
@@ -468,6 +474,18 @@ class Relay:
         dur = len(pcm) / 2 / int(self.cfg["sr"])
         if not (1.0 <= dur <= 12.0):
             print(f"[relay] carry: utterance {dur:.1f}s out of 1-12s, ignored", flush=True)
+            return
+        # echo guard: audio far longer than the text implies means the model
+        # repeated itself - never let that into the reference chain
+        expected = max(len(text.strip()) / 5.0, 1.0)
+        if dur > expected * 1.8 + 1.0:
+            print(f"[relay] carry: suspected repetition ({dur:.1f}s vs ~{expected:.1f}s "
+                  f"expected), not carried", flush=True)
+            return
+        # duplicate guard: identical text already in the window
+        norm = text.strip()
+        if any(u[1].strip() == norm for u in self._carry_utts):
+            print("[relay] carry: duplicate text, not carried", flush=True)
             return
         self._carry_utts.append((pcm, text))
         total = sum(len(u[0]) / 2 / int(self.cfg["sr"]) for u in self._carry_utts)
