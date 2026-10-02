@@ -90,9 +90,13 @@ class Relay:
         # (int16 PCM chunks; None marks the end of one utterance)
         self.audio_q = queue.Queue(maxsize=2048)
         self._play_quit = object()
-        # emotion carry-over: (wav_path, transcript) of the last utterance
-        self._last_carry = None
+        # emotion carry-over v3: sliding window of recent utterances
+        # (pcm_bytes, text) that get CONCATENATED with the anchor reference
+        # into one wav -> a single in-distribution reference pair
+        self._carry_utts = []  # oldest first
         self._carry_seq = 0
+        self._anchor_pcm = None
+        self._anchor_sr = None
         self._utt_end = object()
         self._stream_restart = object()
 
@@ -120,6 +124,8 @@ class Relay:
         if name not in self.backends:
             return False
         self.stop()
+        self._carry_utts = []
+        self._anchor_pcm = None
         self.backend_name = name
         models = self.models_for(name)
         if self.model_name not in models:
@@ -181,6 +187,8 @@ class Relay:
         if name not in models:
             return False, "unknown model"
         self.stop()  # avoid glitching audio while weights swap
+        self._carry_utts = []
+        self._anchor_pcm = None  # anchor is per-voice
         b = self.backend()
         try:
             if b.get("type") == "genie":
@@ -323,11 +331,13 @@ class Relay:
         capture = (b.get("type") == "gptsovits" and self.cfg.get("emotion_carry"))
         captured = bytearray() if capture else None
         if b.get("type") == "gptsovits":
-            # v1.5 hybrid anchoring: the per-model ANCHOR reference stays as
-            # the main ref (stable path -> backend ref cache keeps hitting);
-            # the previous utterance's wav rides along as an aux reference
-            # (ge averaged), nudging emotion while the anchor holds the timbre.
+            anchor_ref, _ = self._ref_pair()
             ref_audio, prompt_text = self._ref_pair()
+            if capture:
+                concat_path, concat_text = self._build_concat_ref()
+                if concat_path is not None:
+                    ref_audio, prompt_text = concat_path, concat_text
+                    print(f"[relay] concat ref: {concat_text[:40]}...", flush=True)
             payload = {
                 "text": text,
                 "text_lang": self.cfg["text_lang"],
@@ -338,9 +348,6 @@ class Relay:
                 "streaming_mode": 2,
                 "media_type": "raw",
             }
-            if self.cfg.get("emotion_carry") and self._last_carry is not None:
-                payload["aux_ref_audio_paths"] = [self._last_carry[0]]
-                print(f"[relay] emotion carry (aux): {self._last_carry[0]}", flush=True)
             seed = int(self.cfg.get("seed", -1))
             if seed >= 0:
                 payload["seed"] = seed  # fixed seed -> reproducible audio
@@ -373,17 +380,64 @@ class Relay:
             self._store_carry(bytes(captured), text)
         self._refresh_menu()
 
-    def _store_carry(self, pcm: bytes, text: str):
-        """Keep the finished utterance as the next request's emotion-carry
-        reference (3-10 s; outside that range fall back to the anchor ref).
-        Each utterance gets a UNIQUE filename because both backends cache
-        reference features by path string."""
-        import wave
+    # ---- emotion carry v3: concat(anchor, recent utterances) as one ref ----
+
+    CARRY_ANCHOR_MAX = 10.0   # cap the anchor segment
+    CARRY_UTT_MAX = 10.0      # cap the summed recent utterances
+    CARRY_TOTAL_MAX = 14.0    # cap the whole concatenated reference
+
+    def _load_anchor_pcm(self):
+        """Lazy-load the per-model anchor wav as (s16 mono pcm @ cfg sr, text)."""
+        model_key = f"{self.backend_name}:{self.model_name}"
+        if self._anchor_pcm is not None and getattr(self, "_anchor_key", None) == model_key:
+            return self._anchor_pcm
+        import soundfile as sf
+        import soxr
+        ref_path, ref_text = self._ref_pair()
+        data, sr = sf.read(ref_path, dtype="float32", always_2d=True)
+        data = data.mean(axis=1)
+        if sr != int(self.cfg["sr"]):
+            data = soxr.resample(data, sr, int(self.cfg["sr"]))
+        pcm = (np.clip(data, -1, 1) * 32767).astype("<i2").tobytes()
         dur = len(pcm) / 2 / int(self.cfg["sr"])
-        if not (3.0 <= dur <= 10.0):
-            self._last_carry = None
-            print(f"[relay] carry skipped, duration {dur:.1f}s out of 3-10s", flush=True)
-            return
+        if dur > self.CARRY_ANCHOR_MAX:  # keep the anchor's tail
+            pcm = pcm[-int(self.CARRY_ANCHOR_MAX * int(self.cfg["sr"])) * 2:]
+        self._anchor_pcm = pcm
+        self._anchor_key = model_key
+        self._anchor_text = ref_text
+        return pcm
+
+    def _build_concat_ref(self):
+        """Concatenate anchor + recent utterances into one wav (unique name per
+        turn: both backends cache reference features by path string). Returns
+        (path, transcript) or (None, None) when there is nothing to carry."""
+        import wave
+        anchor = self._load_anchor_pcm()
+        utts = list(self._carry_utts)
+        # duration-based trim of the window (newest kept)
+        def utt_dur(u):
+            return len(u[0]) / 2 / int(self.cfg["sr"])
+        while utts and sum(utt_dur(u) for u in utts) > self.CARRY_UTT_MAX:
+            utts.pop(0)
+        total = (len(anchor) / 2 / int(self.cfg["sr"])) + sum(utt_dur(u) for u in utts)
+        while utts and total > self.CARRY_TOTAL_MAX:
+            total -= utt_dur(utts[0])
+            utts.pop(0)
+        if not utts:
+            return None, None
+        self._carry_utts = utts
+
+        pieces = [anchor] + [u[0] for u in utts]
+        text_parts = []
+        for t in [self._anchor_text] + [u[1] for u in utts]:
+            t = (t or "").strip()
+            if not t:
+                continue
+            if t[-1] not in "。！？!?…；;":
+                t += "。"
+            text_parts.append(t)
+        transcript = "".join(text_parts)
+
         self._carry_seq += 1
         path = os.path.join(BASE_DIR, f"carry_{self._carry_seq % 50:03d}.wav")
         try:
@@ -391,17 +445,33 @@ class Relay:
                 w.setnchannels(1)
                 w.setsampwidth(2)
                 w.setframerate(int(self.cfg["sr"]))
-                w.writeframes(pcm)
-            old = self._last_carry[0] if self._last_carry else None
-            self._last_carry = (path, text)
+                w.writeframes(b"".join(pieces))
+            old = getattr(self, "_last_concat_path", None)
+            self._last_concat_path = path
             if old and old != path and os.path.exists(old):
                 try:
                     os.remove(old)
                 except OSError:
                     pass
-            print(f"[relay] carry stored: {path} ({dur:.1f}s)", flush=True)
+            dur = len(b"".join(pieces)) / 2 / int(self.cfg["sr"])
+            print(f"[relay] concat ref: {len(utts)} utt(s), {dur:.1f}s total", flush=True)
+            return path, transcript
         except Exception as e:
-            print("carry store failed:", e, flush=True)
+            print("concat ref failed:", e, flush=True)
+            return None, None
+
+    def _store_carry(self, pcm: bytes, text: str):
+        """Append a completed utterance to the sliding carry window."""
+        dur = len(pcm) / 2 / int(self.cfg["sr"])
+        if not (1.0 <= dur <= 12.0):
+            print(f"[relay] carry: utterance {dur:.1f}s out of 1-12s, ignored", flush=True)
+            return
+        self._carry_utts.append((pcm, text))
+        total = sum(len(u[0]) / 2 / int(self.cfg["sr"]) for u in self._carry_utts)
+        while self._carry_utts and total > self.CARRY_UTT_MAX:
+            total -= len(self._carry_utts[0][0]) / 2 / int(self.cfg["sr"])
+            self._carry_utts.pop(0)
+        print(f"[relay] carry window: {len(self._carry_utts)} utt(s), {total:.1f}s", flush=True)
 
     def _refresh_menu(self):
         if self.icon is not None:
