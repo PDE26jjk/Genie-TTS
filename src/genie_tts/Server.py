@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 from typing import AsyncIterator, Optional, Callable, Union, Dict
 import logging
 
@@ -87,6 +88,14 @@ def set_reference_audio_endpoint(payload: ReferenceAudioPayload):
     return {"status": "success", "message": f"Reference audio for '{payload.character_name}' set."}
 
 
+# TTSPlayer is a stateful singleton (one text/audio queue, one callback
+# slot): two overlapping /tts requests clobber each other's session - the
+# 2nd start_session steals the 1st's remaining chunks and end signal.
+# Serialize whole sessions; pipelined clients keep their playback running
+# from already-buffered chunks while the next request waits its turn.
+_tts_session_lock = threading.Lock()
+
+
 def run_tts_in_background(
         character_name: str,
         text: str,
@@ -95,21 +104,22 @@ def run_tts_in_background(
         chunk_callback: Callable[[Optional[bytes]], None]
 ):
     try:
-        context.current_speaker = character_name
-        context.current_prompt_audio = ReferenceAudio(
-            prompt_wav=_reference_audios[character_name]['audio_path'],
-            prompt_text=_reference_audios[character_name]['audio_text'],
-            language=_reference_audios[character_name]['language'],
-        )
-        tts_player.start_session(
-            play=False,
-            split=split_sentence,
-            save_path=save_path,
-            chunk_callback=chunk_callback,
-        )
-        tts_player.feed(text)
-        tts_player.end_session()
-        tts_player.wait_for_tts_completion()
+        with _tts_session_lock:
+            context.current_speaker = character_name
+            context.current_prompt_audio = ReferenceAudio(
+                prompt_wav=_reference_audios[character_name]['audio_path'],
+                prompt_text=_reference_audios[character_name]['audio_text'],
+                language=_reference_audios[character_name]['language'],
+            )
+            tts_player.start_session(
+                play=False,
+                split=split_sentence,
+                save_path=save_path,
+                chunk_callback=chunk_callback,
+            )
+            tts_player.feed(text)
+            tts_player.end_session()
+            tts_player.wait_for_tts_completion()
     except Exception as e:
         logger.error(f"Error in TTS background task: {e}", exc_info=True)
 

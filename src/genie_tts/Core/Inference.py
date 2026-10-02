@@ -28,7 +28,7 @@ HISTORY_MAX_TOKENS = 150  # ~6 s of semantic tokens at 25 Hz
 
 def _carry_history(prompt_audio):
     """Per-character history list, stored on the cached ReferenceAudio."""
-    if not os.environ.get(CARRY_ENV):
+    if os.environ.get(CARRY_ENV) != "1":  # "0" is truthy as a string!
         return None
     hist = getattr(prompt_audio, "carry_history", None)
     if hist is None:
@@ -323,10 +323,14 @@ class GENIE:
     ) -> Iterator[tuple[np.ndarray, bool]]:
         """Static CUDA-graph decode: prefill via the dynamic first-stage graph,
         then per-step replay of t2s_static.onnx; sampling in numpy."""
+        dbg = os.environ.get('GENIE_T2S_DEBUG', '0') == '1'
         eos = engine.vocab - 1
         if hist:
             text_seq, text_bert = _extend_inputs(text_seq=text_seq,
                                              text_bert=text_bert, hist=hist)
+        if dbg:
+            print(f"[t2s-static] hist={len(hist) if hist else 0} "
+                  f"text_len={int(text_seq.shape[-1])} eos_id={eos}", flush=True)
         x, prompts = encoder.run(
             None,
             {
@@ -348,12 +352,20 @@ class GENIE:
         kv_pos = past_len
         token = y_tokens[-1]
         gen_idx = 1
+        if dbg:
+            print(f"[t2s-static] y_shape={y.shape} P={P} past_len={past_len} "
+                  f"first_token={token} prompt_tokens={y_tokens[:min(P, 6)]}...",
+                  flush=True)
         if token == eos:
+            if dbg:
+                print(f"[t2s-static] STOP eos-on-prefill: P={P} "
+                      f"prefill_tokens={len(y_tokens) - 1}", flush=True)
             yield np.asarray(y_tokens[P:-1], dtype=np.int64)[None, None, :], True
             return
 
-        # budget: ~6 tokens per input phone is a generous ceiling; anything
-        # beyond it is junk tail the model emits before settling on EOS
+        # hard iteration cap only (same spirit as the original infer loop's
+        # max-length bound); no content-based force-stop guards - termination
+        # is the model's own EOS, exactly like the dynamic path
         token_budget = int(text_seq.shape[-1]) * 6 + 60
         for _ in range(min(engine.max_len - kv_pos - 2, token_budget)):
             if self.stop_event.is_set():
@@ -361,7 +373,14 @@ class GENIE:
             logits = engine.step(token, pe_pos, kv_pos)
             nxt = _sample_numpy(logits, y_tokens)
             gen_idx += 1
+            if dbg and gen_idx <= 8:
+                top5 = np.argsort(logits)[::-1][:5]
+                print(f"[t2s-static] step{gen_idx} kv_pos={kv_pos} pe_pos={pe_pos} "
+                      f"sampled={nxt} top5={top5.tolist()}", flush=True)
             if nxt == eos:
+                if dbg:
+                    print(f"[t2s-static] STOP eos at gen_idx={gen_idx} "
+                          f"generated={len(y_tokens) - P} tokens", flush=True)
                 yield np.asarray(y_tokens[P:], dtype=np.int64)[None, None, :], True
                 return
             y_tokens.append(nxt)
@@ -370,6 +389,8 @@ class GENIE:
             token = nxt
             pe_pos += 1
             kv_pos += 1
+        if dbg:
+            print(f"[t2s-static] STOP loop-exhausted: generated={len(y_tokens) - P} tokens", flush=True)
         yield np.asarray(y_tokens[P:], dtype=np.int64)[None, None, :], True
 
     def _t2s_stream(

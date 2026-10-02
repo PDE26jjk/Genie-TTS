@@ -84,6 +84,9 @@ class TTSPlayer:
                     continue
 
                 tts_client.stop_event.clear()
+                if os.environ.get('GENIE_T2S_DEBUG', '0') == '1':
+                    print(f"[genie] tts: path={'static' if gsv_model.T2S_STATIC is not None else 'dynamic'} "
+                          f"text={sentence[:30]!r}", flush=True)
                 audio_stream = tts_client.tts_stream(
                     text=sentence,
                     prompt_audio=context.current_prompt_audio,

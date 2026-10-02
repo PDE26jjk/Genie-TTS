@@ -27,8 +27,10 @@ with open(CONFIG_FILE, encoding="utf-8") as f:
     cfg = json.load(f)
 
 os.environ.setdefault("GENIE_DEVICE", cfg.get("device", "cpu"))
-os.environ.setdefault("GENIE_STATIC_DECODE", "1" if cfg.get("static_decode") else "0")
-os.environ.setdefault("GENIE_EMOTION_CARRY", "1" if cfg.get("emotion_carry") else "0")
+if cfg.get("static_decode"):
+    os.environ.setdefault("GENIE_STATIC_DECODE", "1")
+if cfg.get("emotion_carry"):
+    os.environ.setdefault("GENIE_EMOTION_CARRY", "1")
 print("env:", os.environ.get("GENIE_EMOTION_CARRY"), "| static:", os.environ.get("GENIE_STATIC_DECODE"))
 
 
