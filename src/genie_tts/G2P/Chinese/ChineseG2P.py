@@ -29,7 +29,11 @@ SPECIAL_REPLACEMENTS = {"...": "…"}  # 特殊的多字符替换
 class ChineseG2P:
     def __init__(self):
         # --- 资源加载 ---
+        # G2pM stays as the fallback; G2PW (stronger polyphone disambiguation,
+        # ported from GPT-SoVITS text/g2pw) is lazy-loaded on first use.
         self.g2pm: G2pM = G2pM()
+        self._g2pw_engine = None
+        self._g2pw_failed = os.environ.get('GENIE_G2PW', '1') != '1'
         self.tone_modifier: ToneSandhi = ToneSandhi()
         self.erhua_processor: ErhuaProcessor = ErhuaProcessor()
         self.text_normalizer: TextNormalizer = TextNormalizer()
@@ -54,6 +58,21 @@ class ChineseG2P:
         self.single_rep_map = {"v": "yu", "e": "e", "i": "y", "u": "w"}
 
         self.load_opencpop_dict()
+
+    def _get_g2pw(self):
+        """Lazy-load the G2PW neural disambiguator (605 MB onnx, runs on CPU).
+        Falls back to G2pM when the model assets are missing."""
+        import time
+        if self._g2pw_engine is None and not self._g2pw_failed:
+            try:
+                from .g2pw import G2PWPinyin
+                t0 = time.time()
+                self._g2pw_engine = G2PWPinyin(v_to_u=True, neutral_tone_with_five=True)
+                print(f"[g2pw] ready in {time.time() - t0:.1f}s", flush=True)
+            except Exception as e:
+                print(f"[g2pw] unavailable, falling back to G2pM: {e}", flush=True)
+                self._g2pw_failed = True
+        return self._g2pw_engine
 
     def load_opencpop_dict(self):
         # 加载 Opencpop 映射表
@@ -123,9 +142,13 @@ class ChineseG2P:
             seg_cut = self.tone_modifier.pre_merge_for_modify(seg_cut)
             initials = []
             finals = []
-            # G2PM 整句推理
-            pinyins = self.g2pm(seg, char_split=True)
-            pinyins = [p.replace("u:", "v") for p in pinyins]
+            # 整句神经注音：G2PW 优先（多音字消歧更强），G2pM 兜底
+            g2pw = self._get_g2pw()
+            if g2pw is not None:
+                pinyins = g2pw._g2pw([seg])[0]
+            else:
+                pinyins = self.g2pm(seg, char_split=True)
+            pinyins = [p.replace("u:", "v") if p else p for p in pinyins]
             pre_word_length = 0
             for word, pos in seg_cut:
                 now_word_length = pre_word_length + len(word)

@@ -432,8 +432,14 @@ class ModelManager:
 
         def _providers():
             # kSameAsRequested avoids the arena's power-of-two over-reservation
-            # that otherwise balloons reserved VRAM during long generations
-            return [('CUDAExecutionProvider', {'arena_extend_strategy': 'kSameAsRequested'})
+            # that otherwise balloons reserved VRAM during long generations;
+            # GENIE_GPU_MEM_LIMIT_MB (per session, MB) additionally caps each
+            # arena so the process stays under the WDDM spill threshold
+            opts = {'arena_extend_strategy': 'kSameAsRequested'}
+            limit_mb = os.getenv('GENIE_GPU_MEM_LIMIT_MB', '')
+            if limit_mb:
+                opts['gpu_mem_limit'] = str(int(float(limit_mb) * 1048576))
+            return [('CUDAExecutionProvider', opts)
                     if p == 'CUDAExecutionProvider' else p for p in self.providers]
 
         try:

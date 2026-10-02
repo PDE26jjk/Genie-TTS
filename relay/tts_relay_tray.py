@@ -179,8 +179,12 @@ class Relay:
         text = (text or "").strip()
         if not text:
             return 0
+        # enqueue each piece separately: the gen loop pipelines generation
+        # ahead of playback per item, so long replies flow piece by piece
+        pieces = self._split_text(text)
         with self.cond:
-            self.texts.append(text)
+            for piece in pieces:
+                self.texts.append(piece)
             n = len(self.texts)
             # play=True forces start, play=False leaves the stream paused,
             # None defers to the auto_play config
@@ -407,8 +411,13 @@ class Relay:
         return chunks
 
     def _generate(self, text):
+        # a freshly popped item always generates: the abort flag belongs to
+        # stop/switch actions on IN-FLIGHT generation, and leaving it set
+        # (backend switch -> stop()) would silently swallow new items
+        self.abort.clear()
         for chunk in self._split_text(text):
             if self.abort.is_set():
+                print("[relay] generate aborted mid-text", flush=True)
                 return
             self._generate_one(chunk)
 
