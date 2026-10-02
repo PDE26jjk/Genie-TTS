@@ -31,6 +31,10 @@ if cfg.get("static_decode"):
     os.environ.setdefault("GENIE_STATIC_DECODE", "1")
 if cfg.get("emotion_carry"):
     os.environ.setdefault("GENIE_EMOTION_CARRY", "1")
+# every model (G2PW tokenizer included) is on local disk - never let a HF
+# hub probe hang the startup or silently demote G2PW to the G2pM fallback
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 print("env:", os.environ.get("GENIE_EMOTION_CARRY"), "| static:", os.environ.get("GENIE_STATIC_DECODE"))
 
 

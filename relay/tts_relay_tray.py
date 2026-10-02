@@ -711,6 +711,13 @@ def main():
                                  "w", encoding="utf-8"))
     except Exception:
         pass
+    # redirected stdout defaults to the legacy console codepage and turns
+    # Chinese log lines into mojibake
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
     # Exclusive bind: http.server sets SO_REUSEADDR, which on Windows
     # silently allows a second instance to double-bind the same port -

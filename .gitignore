@@ -8,3 +8,17 @@ GenieData/
 relay/carry_*.wav
 api_v2.log
 *_fp16.onnx
+# personal voice models and audio (dq is a privately trained voice; feibi
+# comes from the HF repo and is downloaded on demand)
+models_dq_v2pro/
+CharacterModels/
+test_dq_stream.wav
+carry_t1.wav
+carry_t2.wav
+genie_cudagraph_demo.wav
+# personal runtime configs - use the *.example.json templates instead
+genie_server_config.json
+relay/tts_relay_config.json
+genie_server*.log
+genie_diag.log
+genie_server.err.log

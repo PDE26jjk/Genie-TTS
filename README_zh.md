@@ -233,6 +233,8 @@ genie.start_server(
    - `genie_characters`：Genie 后端的 ONNX 角色目录。
    - `ref_audio` / `prompt_text`：克隆音色的参考音频（绝对路径）。
    - `test_text`、`volume`、`auto_play`、`seed`（-1 = 韵律随机）。
+
+   仓库附带以官方 **Feibi** 角色（`CharacterModels/v2ProPlus/feibi`，首次使用从 HuggingFace 自动下载）为默认音色的模板配置：`genie_server_config.example.json` 与 `relay/tts_relay_config.example.json`。个人运行配置（`genie_server_config.json`、`relay/tts_relay_config.json`）不入库——复制模板后自行修改。
 2. 启动需要的后端（GPT-SoVITS 整合包的 api_v2、本仓库的 `start_genie_server.py`）。
 3. 启动中转站：
 
@@ -248,7 +250,7 @@ cd relay
 | `POST /say` | `{"text": "...", "play": true?}` | 入队文本（默认自动播放） |
 | `POST /start` / `POST /stop` | - | 恢复队列 / 掐断当前并清空 |
 | `POST /backend` | `{"name": "Genie(ONNX)"}` | 切换后端 |
-| `POST /model` | `{"name": "dq-v2Pro(微调)"}` | 切换 checkpoint/角色 |
+| `POST /model` | `{"name": "feibi-ONNX"}` | 切换 checkpoint/角色 |
 | `POST /volume` | `{"volume": 0.3}` | 0.0 – 1.5，持久化 |
 | `GET /status` | - | 状态、队列、后端、模型、音量 |
 

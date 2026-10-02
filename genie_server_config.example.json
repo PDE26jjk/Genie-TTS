@@ -1,0 +1,27 @@
+{
+  "_comment1": "Example Genie server config - copy to genie_server_config.json and edit. JSON has no comments, so every '_comment*' key is documentation only and ignored by the loader.",
+  "_comment2": "characters are loaded in order at startup. Put the default voice first. 'feibi' is the official v2ProPlus character downloaded from HuggingFace High-Logic/Genie (CharacterModels/v2ProPlus/feibi); it has no static decode graph, so with static_decode=true it runs the dynamic graph while static-capable characters use the CUDA-graph path.",
+  "_comment3": "dq is an EXAMPLE entry for a privately converted voice (GPT-SoVITS checkpoint -> ONNX). Point onnx_model_dir/ref_audio at your own files; the repo ships no voice data.",
+  "_comment4": "dll_dirs/torch_site are optional Windows CUDA helpers - only needed if torch is not importable from the server's Python environment.",
+  "host": "127.0.0.1",
+  "port": 9882,
+  "device": "gpu",
+  "characters": {
+    "feibi": {
+      "onnx_model_dir": "CharacterModels/v2ProPlus/feibi/tts_models",
+      "language": "Chinese",
+      "ref_audio": "CharacterModels/v2ProPlus/feibi/prompt_wav/zh_vo_Main_Linaxita_2_1_10_26.wav",
+      "ref_text": "在此之前，请您务必继续享受旅居拉古那的时光。",
+      "ref_lang": "Chinese"
+    },
+    "dq": {
+      "onnx_model_dir": "models_dq_v2pro",
+      "language": "Hybrid-Chinese-English",
+      "ref_audio": "<path to your own reference wav>",
+      "ref_text": "<transcript of the reference wav>",
+      "ref_lang": "Chinese"
+    }
+  },
+  "static_decode": true,
+  "emotion_carry": true
+}

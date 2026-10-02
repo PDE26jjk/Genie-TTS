@@ -249,6 +249,13 @@ Extra dependency only for the tray UI: `pip install pystray pillow`
    - `genie_characters`: ONNX character dirs for the Genie backend.
    - `ref_audio` / `prompt_text`: the voice-cloning reference (absolute path).
    - `test_text`, `volume`, `auto_play`, `seed` (-1 = random prosody).
+
+   The repo ships template configs with the official **Feibi** character
+   (`CharacterModels/v2ProPlus/feibi`, auto-downloaded from HuggingFace)
+   as the default voice: `genie_server_config.example.json` and
+   `relay/tts_relay_config.example.json`. Your personal runtime configs
+   (`genie_server_config.json`, `relay/tts_relay_config.json`) are
+   gitignored - copy the templates and edit them.
 2. Start the backends you want (api_v2 from the GPT-SoVITS package,
    `start_genie_server.py` from this repo).
 3. Start the relay:
@@ -265,7 +272,7 @@ cd relay
 | `POST /say` | `{"text": "...", "play": true?}` | enqueue text (auto-plays by default) |
 | `POST /start` / `POST /stop` | - | resume queue / abort current + clear |
 | `POST /backend` | `{"name": "Genie(ONNX)"}` | switch backend |
-| `POST /model` | `{"name": "dq-v2Pro(微调)"}` | switch checkpoint/character |
+| `POST /model` | `{"name": "feibi-ONNX"}` | switch checkpoint/character |
 | `POST /volume` | `{"volume": 0.3}` | 0.0 – 1.5, persisted |
 | `GET /status` | - | state, queue, backend, model, volume |
 
