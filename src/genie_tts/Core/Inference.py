@@ -85,21 +85,29 @@ class StaticT2SEngine:
             raise RuntimeError("StaticT2SEngine requires the CUDA execution provider")
         so = ort.SessionOptions()
         so.add_session_config_entry("enable_cuda_graph", "1")
-        self.sess = ort.InferenceSession(onnx_path, so, providers=["CUDAExecutionProvider"])
+        self.sess = ort.InferenceSession(
+            onnx_path, so,
+            providers=[("CUDAExecutionProvider",
+                        {"arena_extend_strategy": "kSameAsRequested"})])
         outs = {o.name: o.shape for o in self.sess.get_outputs()}
-        ins = {i.name: i.shape for i in self.sess.get_inputs()}
+        ins_meta = {i.name: i for i in self.sess.get_inputs()}
+        ins = {name: m.shape for name, m in ins_meta.items()}
         self.L = ins["kv_k_in"][0]
         self.max_len = ins["kv_k_in"][2]
         self.H = ins["kv_k_in"][3]
         self.D = ins["kv_k_in"][4]
         self.vocab = outs["logits"][1] if isinstance(outs["logits"][1], int) else 1025
+        # fp16 graphs (converted by convert_static_fp16.py) keep everything -
+        # weights, KV cache, captured activations - at half the VRAM
+        self.kv_dtype = np.float16 if 'float16' in ins_meta["kv_k_in"].type else np.float32
+        self.logits_dtype = np.float16 if 'float16' in self.sess.get_outputs()[0].type else np.float32
 
         self.kvk = ort.OrtValue.ortvalue_from_numpy(
-            np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32), "cuda", 0)
+            np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=self.kv_dtype), "cuda", 0)
         self.kvv = ort.OrtValue.ortvalue_from_numpy(
-            np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32), "cuda", 0)
+            np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=self.kv_dtype), "cuda", 0)
         self.logits_b = ort.OrtValue.ortvalue_from_numpy(
-            np.zeros((1, self.vocab), dtype=np.float32), "cuda", 0)
+            np.zeros((1, self.vocab), dtype=self.logits_dtype), "cuda", 0)
 
         self.io = self.sess.io_binding()
         self.io.bind_ortvalue_input("kv_k_in", self.kvk)
@@ -112,8 +120,10 @@ class StaticT2SEngine:
     def reset(self, present: List[np.ndarray], past_len: int):
         """H2D-load the prefill KV (interleaved [pk0, pv0, pk1, pv1, ...])
         produced by the first-stage graph. Full-size padded arrays so
-        update_inplace sizes match."""
-        full_k = np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=np.float32)
+        update_inplace sizes match; values are cast to the cache dtype
+        (fp32 first-stage output -> fp16 cache when the static graph is
+        converted)."""
+        full_k = np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=self.kv_dtype)
         full_v = np.zeros_like(full_k)
         for l in range(self.L):
             full_k[l, 0, :past_len] = present[2 * l].reshape(past_len, self.H, self.D)
@@ -227,7 +237,7 @@ class GENIE:
                 text_bert=text_bert, ssl_content=prompt_audio.ssl_content,
                 encoder=encoder, first_stage_decoder=first_stage_decoder,
                 chunk_tokens=min_chunk_tokens, hist=hist)
-        else:
+        elif stage_decoder is not None:
             tok_iter = self._t2s_stream(
                 ref_seq=prompt_audio.phonemes_seq,
                 ref_bert=prompt_audio.text_bert,
@@ -238,6 +248,12 @@ class GENIE:
                 first_stage_decoder=first_stage_decoder,
                 stage_decoder=stage_decoder,
                 chunk_tokens=min_chunk_tokens, hist=hist)
+        else:
+            # static mode skips loading the stage decoder; if the static
+            # engine also failed to build there is no t2s path at all
+            raise RuntimeError(
+                "no t2s decoder available: static engine failed to build "
+                "and the stage decoder session was not loaded")
 
         # pass-through wrapper: remember the utterance's tokens when the
         # generation ran to completion (not aborted), then store them as
@@ -403,6 +419,13 @@ class GENIE:
                 "ssl_content": ssl_content,
             },
         )
+        # token carry: append the history utterances' semantic tokens to the
+        # prompt so the next sentence starts in the same prosodic context
+        # (same treatment as the dynamic paths)
+        if hist:
+            hist_tok = np.asarray(
+                [[t for e in hist for t in e["tokens"]]], dtype=np.int64)
+            prompts = np.concatenate([prompts, hist_tok], axis=1)
         first_out = first_stage_decoder.run(None, {"x": x, "prompts": prompts})
         y, y_emb, *present = first_out
         y_tokens = y[0].tolist()

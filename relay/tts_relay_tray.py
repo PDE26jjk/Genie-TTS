@@ -344,7 +344,11 @@ class Relay:
         # near-realtime ones (CPU) need a cushion against chunk jitter
         self._play_prebuffer = float(b.get("prebuffer_s",
                                            self.cfg.get("prebuffer_s", 1.5)))
-        capture = bool(self.cfg.get("emotion_carry"))
+        # emotion carry: gptsovits uses wav-concat references (v3); the genie
+        # backend uses the server-side token carry, so only gptsovits turns
+        # are captured into the relay's sliding window
+        capture = (bool(self.cfg.get("emotion_carry"))
+                   and b.get("type") == "gptsovits")
         captured = bytearray() if capture else None
         # emotion carry v3, shared by both backends: once the sliding window
         # has content, generate against concat(anchor, recent utterances)
@@ -362,26 +366,16 @@ class Relay:
                     print(f"[relay] concat ref: {concat_text[:40]}...", flush=True)
         if b.get("type") == "genie":
             entry = (self.cfg.get("genie_characters") or {}).get(self.model_name, {})
-            if capture:
-                ref_audio, prompt_text = self._ref_pair()
-                if ref_override:
-                    ref_audio, prompt_text = ref_override
-                # the genie server holds one reference per character; push the
-                # (possibly concatenated) one before generating - also resets
-                # a stale concat left over from the previous turn
-                requests.post(b["api_url"] + "/set_reference_audio", json={
-                    "character_name": entry.get("character_name", self.model_name),
-                    "audio_path": ref_audio,
-                    "audio_text": prompt_text,
-                    "language": entry.get("ref_lang", "Chinese"),
-                }, timeout=30).raise_for_status()
+            # token carry: the server keeps the anchor reference and appends
+            # recent utterances as semantic tokens itself (GENIE_EMOTION_CARRY=1)
+            # - no per-utterance reference push, no HuBERT/SV re-extraction
             payload = {
                 "character_name": entry.get("character_name", self.model_name),
                 "text": text,
-                # sentence-split server-side: the streaming vocoder re-decodes
-                # the full prefix per chunk, so per-sentence prefixes keep CPU
-                # decode cost near-linear on long texts
-                "split_sentence": True,
+                # one prefill per utterance: with incremental vocoder decoding
+                # there is no prefix blow-up left, and sentence boundaries
+                # would only insert extra prefill stalls into playback
+                "split_sentence": False,
             }
         if b.get("type") == "gptsovits":
             anchor_ref, _ = self._ref_pair()

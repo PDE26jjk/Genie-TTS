@@ -264,6 +264,10 @@ class ModelManager:
     def load_roberta_model(self) -> bool:
         # 将原来的“固定路径加载”替换为“先解析资源路径再加载”。
         # 这样历史本地目录布局和 Hugging Face ONNX 布局都能正常工作。
+        # GENIE_SKIP_ROBERTA=1 saves ~560 MB of VRAM; Chinese text then gets
+        # zero BERT features (prosody-fix quality degrades, speech still works).
+        if os.getenv('GENIE_SKIP_ROBERTA', '0') == '1':
+            return False
         if self.roberta_model is not None and self.roberta_tokenizer is not None:
             return True
 
@@ -383,8 +387,24 @@ class ModelManager:
 
         model_dict: Dict[str, Optional[InferenceSession]] = {}
 
-        static_onnx = os.path.join(model_dir, 't2s_static.onnx')
+        # With the CUDA-graph static decode enabled the stage decoder session
+        # is never used - skip it and keep ~293 MB of VRAM free.
+        use_static = (os.getenv('GENIE_STATIC_DECODE', '0') == '1'
+                      and os.path.exists(os.path.join(model_dir, 't2s_static.onnx')))
+
+        # prefer the fp16 static graph: half the weights, half the captured
+        # activation pool, half the KV cache - the main VRAM lever
+        static_fp16 = os.path.join(model_dir, 't2s_static_fp16.onnx')
+        static_fp32 = os.path.join(model_dir, 't2s_static.onnx')
+        static_onnx = static_fp16 if os.path.exists(static_fp16) else static_fp32
         GSVModelFile.T2S_STATIC_ONNX = static_onnx if os.path.exists(static_onnx) else None
+
+        # NOTE: an fp16 first-stage decoder variant (t2s_first_stage_decoder_fp16.onnx)
+        # currently trips ORT: onnxconverter-common leaves a Cast node in
+        # ar_audio_position type-inconsistent with the rest of the graph.
+        # The fp32 first stage stays until that conversion is fixed.
+        first_stage_fp16 = None
+        self._first_stage_override = None
 
         # 定义 ONNX 文件到 FP16 Bin 文件的映射关系
         onnx_to_fp16_map = {
@@ -404,9 +424,22 @@ class ModelManager:
         fp32_decoders = [GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32, GSVModelFile.T2S_STAGE_DECODER_FP32]
         model_files_to_load.extend(fp32_decoders)
 
+        def _providers():
+            # kSameAsRequested avoids the arena's power-of-two over-reservation
+            # that otherwise balloons reserved VRAM during long generations
+            return [('CUDAExecutionProvider', {'arena_extend_strategy': 'kSameAsRequested'})
+                    if p == 'CUDAExecutionProvider' else p for p in self.providers]
+
         try:
             for model_file in model_files_to_load:
+                if use_static and model_file == GSVModelFile.T2S_STAGE_DECODER_FP32:
+                    model_dict[model_file] = None
+                    continue
                 model_path = os.path.normpath(os.path.join(model_dir, model_file))
+                # static mode: prefill runs through the fp16 first-stage
+                # (self-contained file, no fp16-bin conversion applies)
+                fp16_first_stage = (model_file == GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32
+                                    and self._first_stage_override)
 
                 # 设置 Session Options
                 sess_options = onnxruntime.SessionOptions()
@@ -417,18 +450,24 @@ class ModelManager:
                     # 避免 CUDA/CPU 图分段与每步 24 次 Memcpy 同步。
                     model_path = _hoist_random_noise(model_path)
 
-                if os.path.exists(model_path):
+                if fp16_first_stage:
+                    model_dict[model_file] = onnxruntime.InferenceSession(
+                        self._first_stage_override,
+                        providers=_providers(),
+                        sess_options=sess_options,
+                    )
+                elif os.path.exists(model_path):
                     fp16_bin_name = onnx_to_fp16_map.get(model_file)
                     fp16_bin_path = os.path.join(model_dir, fp16_bin_name) if fp16_bin_name else None
 
                     if fp16_bin_path and os.path.exists(fp16_bin_path):
                         model_dict[model_file] = load_session_with_fp16_conversion(
-                            model_path, fp16_bin_path, self.providers, sess_options
+                            model_path, fp16_bin_path, _providers(), sess_options
                         )
                     else:
                         model_dict[model_file] = onnxruntime.InferenceSession(
                             model_path,
-                            providers=self.providers,
+                            providers=_providers(),
                             sess_options=sess_options,
                         )
                 elif model_file == GSVModelFile.PROMPT_ENCODER:

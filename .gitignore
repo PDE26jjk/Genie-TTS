@@ -7,3 +7,4 @@ relay.log
 GenieData/
 relay/carry_*.wav
 api_v2.log
+*_fp16.onnx
