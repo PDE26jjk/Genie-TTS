@@ -165,6 +165,22 @@ def stop_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class CarryPayload(BaseModel):
+    enabled: bool
+
+
+@app.post("/carry")
+def carry_endpoint(payload: CarryPayload):
+    """Runtime toggle for emotion (token) carry - lets the relay's tray
+    switch control it without restarting the server."""
+    try:
+        from .Core.Inference import set_carry_enabled, carry_enabled
+        set_carry_enabled(payload.enabled)
+        return {"status": "success", "carry": carry_enabled()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/clear_reference_audio_cache")
 def clear_reference_audio_cache_endpoint():
     try:

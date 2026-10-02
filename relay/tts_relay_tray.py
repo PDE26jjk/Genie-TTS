@@ -135,8 +135,44 @@ class Relay:
         models = self.models_for(name)
         if self.model_name not in models:
             self.model_name = next(iter(models), None)
+        b = self.backend()
+        if b.get("type") == "genie":
+            try:
+                requests.post(b["api_url"] + "/carry",
+                              json={"enabled": bool(self.cfg.get("emotion_carry"))},
+                              timeout=5)
+            except Exception:
+                pass
         self._refresh_menu()
         return True
+
+    def set_carry(self, enabled: bool):
+        """Runtime emotion-carry toggle: persist the choice, and sync genie
+        servers via /carry so no restart is needed (older servers without
+        the endpoint are skipped silently)."""
+        enabled = bool(enabled)
+        self.cfg["emotion_carry"] = enabled
+        try:
+            cfg = {}
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, encoding="utf-8") as f:
+                    cfg = json.load(f)
+            cfg["emotion_carry"] = enabled
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print("failed to persist emotion_carry:", e, flush=True)
+        b = self.backend()
+        if b.get("type") == "genie":
+            try:
+                requests.post(b["api_url"] + "/carry",
+                              json={"enabled": enabled}, timeout=5)
+                print(f"[relay] carry -> {'on' if enabled else 'off'} "
+                      f"({b['api_url']})", flush=True)
+            except Exception as e:
+                print(f"[relay] carry sync failed ({b['api_url']}):", e, flush=True)
+        self._refresh_menu()
+        return enabled
 
     # ---- control surface (called from HTTP threads / tray actions) ----
     def say(self, text, play=None):
@@ -637,6 +673,9 @@ def main():
     def play_test(icon, item):
         relay.say(relay.cfg.get("test_text") or "测试文本。")
 
+    def toggle_carry(icon, item):
+        relay.set_carry(not relay.cfg.get("emotion_carry"))
+
     def toggle_hook(icon, item):
         # the ZCode Stop-hook stays silent while the marker file exists
         if os.path.exists(HOOK_MARKER):
@@ -709,6 +748,8 @@ def main():
         pystray.MenuItem("播放测试文本", play_test),
         pystray.MenuItem("朗读ZCode回复", toggle_hook,
                          checked=lambda item: not os.path.exists(HOOK_MARKER)),
+        pystray.MenuItem("拼接参考(情绪延续)", toggle_carry,
+                         checked=lambda item: bool(relay.cfg.get("emotion_carry"))),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("音量", pystray.Menu(*volume_items)),
         pystray.MenuItem("后端", pystray.Menu(*backend_items)),

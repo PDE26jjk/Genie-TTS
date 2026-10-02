@@ -25,10 +25,30 @@ STREAM_FADE_SAMPLES = 640     # 20 ms crossfade at 32 kHz
 CARRY_ENV = "GENIE_EMOTION_CARRY"
 HISTORY_MAX_TOKENS = 150  # ~6 s of semantic tokens at 25 Hz
 
+# runtime switch (default from the env, togglable via the server's /carry
+# endpoint without a restart)
+_carry_enabled = os.environ.get(CARRY_ENV, "0") == "1"
+
+
+def set_carry_enabled(enabled: bool) -> None:
+    """Toggle emotion carry at runtime; clear the windows on disable so a
+    stale context cannot snap back in when carry is turned on again."""
+    global _carry_enabled
+    _carry_enabled = bool(enabled)
+    if not _carry_enabled:
+        from ..Audio.ReferenceAudio import ReferenceAudio
+        for inst in list(ReferenceAudio._prompt_cache.values()):
+            if getattr(inst, "carry_history", None):
+                inst.carry_history.clear()
+
+
+def carry_enabled() -> bool:
+    return _carry_enabled
+
 
 def _carry_history(prompt_audio):
     """Per-character history list, stored on the cached ReferenceAudio."""
-    if os.environ.get(CARRY_ENV) != "1":  # "0" is truthy as a string!
+    if not _carry_enabled:
         return None
     hist = getattr(prompt_audio, "carry_history", None)
     if hist is None:
