@@ -53,4 +53,5 @@ for name, c in cfg.get("characters", {}).items():
     genie.set_reference_audio(name, c["ref_audio"], c["ref_text"], c.get("ref_lang", "Chinese"))
     print(f"character ready: {name}")
 
-genie.start_server(cfg.get("host", "127.0.0.1"), int(cfg.get("port", 9882)))
+port = int(os.environ.get("GENIE_PORT", cfg.get("port", 9882)))
+genie.start_server(cfg.get("host", "127.0.0.1"), port)
