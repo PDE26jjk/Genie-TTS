@@ -9,7 +9,7 @@ description: 让 Agent 通过本机 TTS 中转服务把文本合成语音并播�
 
 ## 调用方式（首选脚本，标准库实现，任意 Python 可跑）
 
-`<技能目录>` 即本 SKILL.md 所在目录（ZCode 加载技能时会显示其路径）：
+`<技能目录>` 即本 SKILL.md 所在目录（Agent 加载技能时会显示其路径）：
 
 ```
 python "<技能目录>\tts_say.py" "要朗读的文本"
