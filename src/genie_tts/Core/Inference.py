@@ -47,19 +47,9 @@ def carry_enabled() -> bool:
 
 
 def _carry_history(prompt_audio):
-    """Per-character history list, stored on the cached ReferenceAudio.
-    GENIE_CARRY_CHARACTERS (comma-separated substrings of the reference
-    audio path) restricts carry to those voices - some pretrained models
-    (feibi) re-voice or early-EOS when generating with a long history,
-    while fine-tuned ones (dq) tolerate it."""
+    """Per-character history list, stored on the cached ReferenceAudio."""
     if not _carry_enabled:
         return None
-    allowed = [s.strip() for s in
-               os.getenv("GENIE_CARRY_CHARACTERS", "").split(",") if s.strip()]
-    if allowed:
-        path = getattr(prompt_audio, "audio_path", "") or ""
-        if not any(s in path for s in allowed):
-            return None
     hist = getattr(prompt_audio, "carry_history", None)
     if hist is None:
         hist = []
