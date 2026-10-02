@@ -275,11 +275,21 @@ class GENIE:
         sent = 0      # samples of the ideal signal already emitted
         tail = None   # held-back samples (fade window) not yet emitted
         ramp = np.linspace(0.0, 1.0, fade_samples, dtype=np.float32)
+        dbg = os.environ.get('GENIE_T2S_DEBUG', '0') == '1'
+        import time as _time
+        t_prev = _time.perf_counter()
 
         for tokens, is_final in tok_iter:
             if self.stop_event.is_set():
                 return
+            t_tok = _time.perf_counter()
             full = decode(tokens)
+            t_dec = _time.perf_counter()
+            if dbg:
+                n_tok = 0 if tokens is None else int(tokens.shape[-1])
+                print(f"[t2s-stream] chunk +{n_tok}tok "
+                      f"t2s_gap={t_tok - t_prev:.2f}s voc={t_dec - t_tok:.2f}s", flush=True)
+            t_prev = t_dec
             if full is None:
                 continue
             if full.ndim == 2:

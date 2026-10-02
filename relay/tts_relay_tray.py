@@ -294,6 +294,22 @@ class Relay:
                 return
             self.current_stream = stream
             reopen = False
+            # prebuffer: hold audio until this many seconds are queued before
+            # the first write of each burst, so chunky backends (CPU mode)
+            # don't starve the device between generation chunks
+            prebuf_bytes = int(float(self.cfg.get("prebuffer_s", 1.5)) *
+                               int(self.cfg["sr"])) * 2
+            pending = bytearray()
+
+            def _flush():
+                if pending:
+                    data = np.frombuffer(bytes(pending), dtype="<i2")
+                    if self.volume != 1.0:
+                        data = np.clip(data.astype(np.float32) * self.volume,
+                                       -32767, 32767).astype("<i2")
+                    stream.write(data)
+                    pending.clear()
+
             try:
                 while True:
                     item = self.audio_q.get()
@@ -303,17 +319,14 @@ class Relay:
                         reopen = True
                         break
                     if item is self._utt_end or item is None:
+                        _flush()
                         continue
-                    data = np.frombuffer(item, dtype="<i2")
-                    if self.volume != 1.0:
-                        data = np.clip(data.astype(np.float32) * self.volume,
-                                       -32767, 32767).astype("<i2")
-                    try:
-                        stream.write(data)
-                    except Exception:
-                        # stream was aborted underneath us; reopen a fresh one
-                        reopen = True
-                        break
+                    pending.extend(item)
+                    if len(pending) >= prebuf_bytes:
+                        _flush()
+            except Exception:
+                # stream was aborted underneath us; reopen a fresh one
+                reopen = True
             finally:
                 self.current_stream = None
                 try:
@@ -359,6 +372,10 @@ class Relay:
             payload = {
                 "character_name": entry.get("character_name", self.model_name),
                 "text": text,
+                # sentence-split server-side: the streaming vocoder re-decodes
+                # the full prefix per chunk, so per-sentence prefixes keep CPU
+                # decode cost near-linear on long texts
+                "split_sentence": True,
             }
         if b.get("type") == "gptsovits":
             anchor_ref, _ = self._ref_pair()

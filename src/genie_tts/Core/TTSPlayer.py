@@ -97,6 +97,11 @@ class TTSPlayer:
                     prompt_encoder=gsv_model.PROMPT_ENCODER,
                     language=gsv_model.LANGUAGE,
                     static_engine=gsv_model.T2S_STATIC,
+                    # CPU streaming: the vocoder re-decodes the full prefix per
+                    # chunk, so small chunks both starve playback and square
+                    # the total decode work. 48 tokens ≈ 1.9 s of audio.
+                    min_chunk_tokens=(48 if os.environ.get('GENIE_DEVICE', 'gpu').lower() == 'cpu'
+                                      else 16),
                 )
 
                 # Intra-sentence streaming: dispatch each audio chunk as soon
