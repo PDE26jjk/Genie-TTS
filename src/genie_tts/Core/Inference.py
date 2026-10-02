@@ -602,9 +602,14 @@ class GENIE:
             hist: Optional[list] = None,
     ) -> Iterator[tuple[np.ndarray, bool]]:
         """Incremental T2S decoding; yields (generated token prefix, is_final)."""
+        dbg = os.environ.get('GENIE_T2S_DEBUG', '0') == '1'
         if hist:
             text_seq, text_bert = _extend_inputs(text_seq=text_seq,
                                                  text_bert=text_bert, hist=hist)
+        if dbg:
+            print(f"[t2s-cpu] hist={len(hist) if hist else 0} "
+                  f"hist_toks={[len(e['tokens']) for e in hist] if hist else []} "
+                  f"text_len={int(text_seq.shape[-1])}", flush=True)
         # Encoder
         x, prompts = encoder.run(
             None,
@@ -621,11 +626,17 @@ class GENIE:
             hist_tok = np.asarray(
                 [[t for e in hist for t in e["tokens"]]], dtype=np.int64)
             prompts = np.concatenate([prompts, hist_tok], axis=1)
+        if dbg:
+            print(f"[t2s-cpu] prompts={prompts.shape[1]} "
+                  f"text_len={int(text_seq.shape[-1])}", flush=True)
 
         # First Stage Decoder
         y, y_emb, *present_key_values = first_stage_decoder.run(
             None, {"x": x, "prompts": prompts}
         )
+        if dbg:
+            print(f"[t2s-cpu] y_shape={y.shape} prefill "
+                  f"(ref+hist={prompts.shape[1]})", flush=True)
 
         # Stage Decoder
         input_names: List[str] = [inp.name for inp in stage_decoder.get_inputs()]
@@ -653,6 +664,8 @@ class GENIE:
 
         if self.stop_event.is_set():
             return
+        if dbg:
+            print(f"[t2s-cpu] done: idx={idx} steps (graph stop signal)", flush=True)
         y[0, -1] = 0
         tokens = np.expand_dims(y[:, -idx:], axis=0)
         # Trim anything at/after EOS (same rule as the non-streaming path).
