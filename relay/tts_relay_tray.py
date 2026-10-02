@@ -238,11 +238,18 @@ class Relay:
         stream = self.current_stream
         if stream is not None:
             # abort() kills sounddevice's blocking-write machinery for THIS
-            # stream object; the play thread must reopen a fresh one.
+            # stream object - and a write into it afterwards is SILENT, not
+            # an error. Whether the play loop notices depends on whether a
+            # write was in flight at this exact moment (a race), so signal
+            # the reopen explicitly instead of relying on the abort to
+            # interrupt a write.
             try:
                 stream.abort()
             except Exception:
                 pass
+        # the play loop consumes this sentinel, closes the dead stream and
+        # opens a fresh one; safe whether it is blocked on get() or writing
+        self.audio_q.put(self._stream_restart)
         try:
             self.audio_q.put_nowait(self._stream_restart)
         except queue.Full:
@@ -535,7 +542,7 @@ class Relay:
         t_start = time.perf_counter()
         first_byte = None
         with HTTP.post(b["api_url"] + "/tts", json=payload,
-                           stream=True, timeout=30) as r:
+                           stream=True, timeout=(10, 120)) as r:
             r.raise_for_status()
             buf = bytearray()
             for piece in r.iter_content(chunk_size=4096):
