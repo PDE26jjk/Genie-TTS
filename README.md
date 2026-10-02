@@ -192,7 +192,71 @@ genie.convert_to_onnx(
 )
 ```
 
+A command-line wrapper for the same call ships as
+`convert_ckpt_to_onnx.py <ckpt> <pth> <out_dir> [version]`. See
+**Voice Model Graphs** below for turning the components into the static
+CUDA-graph decode.
+
 ---
+
+## 🧩 Voice Model Graphs: dynamic vs static
+
+Every character directory (`<model_dir>`, e.g.
+`CharacterModels/v2ProPlus/feibi/tts_models`) holds the **dynamic** ONNX
+components produced by `convert_ckpt_to_onnx.py` (see Model Conversion
+above):
+
+```
+t2s_encoder_fp32.onnx + .bin      t2s_first_stage_decoder_fp32.onnx
+t2s_stage_decoder_fp32.onnx + .bin (shared fp16 weights)
+vits_fp32.onnx + .bin             prompt_encoder_fp32.onnx + .bin
+```
+
+On top of those you can optionally add the **static** CUDA-graph decode of
+the t2s stage (fixed shapes, fixed memory, no allocation jitter):
+
+```
+t2s_static.onnx          fp32 graph
+t2s_static_fp16.onnx     fp16 graph (preferred on CUDA)
+```
+
+**Which one runs where** (decided automatically at character load):
+
+| Device | `static_decode` config | Graph actually used |
+|---|---|---|
+| GPU (CUDA) | `true` | `t2s_static_fp16.onnx` if present, else dynamic |
+| GPU (CUDA) | `false` | dynamic |
+| CPU | anything | **dynamic always** - the fp32 2048-token static graph is ~2x slower on CPU |
+
+Static decode gives a fixed memory footprint and smooth streaming on GPU
+but is meaningless on CPU, so the launcher (`start_genie_server.py`)
+enables it only when the resolved device is not `cpu`.
+
+**Conversion chain** (all steps in this repo):
+
+```text
+GPT-SoVITS checkpoint pair (.ckpt + .pth)
+      |  convert_ckpt_to_onnx.py <ckpt> <pth> <out_dir> [v2|v2Pro|v2ProPlus]
+      v
+dynamic components  <model_dir>
+      |  python export_static_t2s.py --components <model_dir>            --ckpt <any .ckpt, config source> --gptsovits <GPT-SoVITS package>            --out <model_dir>/t2s_static.onnx --max-len 2048
+      v
+t2s_static.onnx (fp32)
+      |  python convert_static_fp16.py --model-dir <model_dir>
+      v
+t2s_static_fp16.onnx
+```
+
+- `--components` takes weights from the dynamic components (HF characters
+  ship no checkpoint); `--ckpt <gpt_ckpt>` exports straight from a
+  fine-tuned checkpoint instead.
+- `--gptsovits` points at a GPT-SoVITS package root (contains `AR/`); the
+  exporter needs `torch` (2.x with the legacy ONNX exporter), `onnx` and
+  `torchmetrics` importable.
+- The t2s architecture is identical across v2 / v2Pro / v2ProPlus / v3, so
+  one exporter serves every version; only the s2 vocoder side differs.
+- After exporting, reload the character (server restart or a tray model
+  switch) to pick up the static graph.
 
 ## 🌐 Launch FastAPI Server
 

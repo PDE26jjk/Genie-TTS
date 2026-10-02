@@ -186,7 +186,63 @@ genie.convert_to_onnx(
 )
 ```
 
+同一调用的命令行包装为 `convert_ckpt_to_onnx.py <ckpt> <pth> <输出目录> [版本]`；
+组件转静态 CUDA-graph 解码见下文 **音色模型图：动态 vs 静态**。
+
 ---
+
+## 🧩 音色模型图：动态 vs 静态
+
+每个角色目录（`<model_dir>`，例如 `CharacterModels/v2ProPlus/feibi/tts_models`）里是
+`convert_ckpt_to_onnx.py` 产出的**动态** ONNX 组件（见上文"模型转换"）：
+
+```
+t2s_encoder_fp32.onnx + .bin      t2s_first_stage_decoder_fp32.onnx
+t2s_stage_decoder_fp32.onnx + .bin（共享 fp16 权重）
+vits_fp32.onnx + .bin             prompt_encoder_fp32.onnx + .bin
+```
+
+在此之上可以额外生成 t2s 阶段的**静态** CUDA-graph 解码图（固定形状、
+内存固定、无分配抖动）：
+
+```
+t2s_static.onnx          fp32 图
+t2s_static_fp16.onnx     fp16 图（CUDA 上优先使用）
+```
+
+**什么设备用什么图**（加载角色时自动决定）：
+
+| 设备 | `static_decode` 配置 | 实际使用的图 |
+|---|---|---|
+| GPU（CUDA） | `true` | 有 `t2s_static_fp16.onnx` 用静态，否则动态 |
+| GPU（CUDA） | `false` | 动态 |
+| CPU | 任意 | **始终动态**——fp32 2048-token 静态图在 CPU 上慢约一倍 |
+
+静态图带来固定内存和流畅的流式输出，但对 CPU 没有意义，因此
+`start_genie_server.py` 只在解析出的设备非 `cpu` 时启用它。
+
+**转换链**（全部脚本在本仓库内）：
+
+```text
+GPT-SoVITS 微调权重对（.ckpt + .pth）
+      |  convert_ckpt_to_onnx.py <ckpt> <pth> <输出目录> [v2|v2Pro|v2ProPlus]
+      v
+动态组件  <model_dir>
+      |  python export_static_t2s.py --components <model_dir>            --ckpt <任意 .ckpt，仅作配置来源> --gptsovits <GPT-SoVITS 包根>            --out <model_dir>/t2s_static.onnx --max-len 2048
+      v
+t2s_static.onnx（fp32）
+      |  python convert_static_fp16.py --model-dir <model_dir>
+      v
+t2s_static_fp16.onnx
+```
+
+- `--components` 表示权重取自动态组件（HF 官方角色不带 checkpoint）；
+  有微调 checkpoint 时可用 `--ckpt <gpt_ckpt>` 直接导出。
+- `--gptsovits` 指向 GPT-SoVITS 包根（内含 `AR/`）；导出环境需要可导入的
+  `torch`（2.x，legacy ONNX 导出器）、`onnx`、`torchmetrics`。
+- t2s 架构在 v2 / v2Pro / v2ProPlus / v3 间完全一致，一个导出器通吃；
+  不同的只有 s2 声码侧。
+- 导出完成后重新加载角色（重启服务或托盘切换一次）即可生效静态图。
 
 ## 🌐 启动 FastAPI 服务
 
