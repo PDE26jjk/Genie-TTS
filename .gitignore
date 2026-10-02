@@ -5,3 +5,5 @@ __pycache__/
 relay.log
 *.pyc
 GenieData/
+relay/carry_*.wav
+api_v2.log

@@ -90,12 +90,25 @@ class Relay:
         # (int16 PCM chunks; None marks the end of one utterance)
         self.audio_q = queue.Queue(maxsize=2048)
         self._play_quit = object()
+        # emotion carry-over: (wav_path, transcript) of the last utterance
+        self._last_carry = None
+        self._carry_seq = 0
         self._utt_end = object()
         self._stream_restart = object()
 
     # ---- backend/model helpers ----
     def backend(self):
         return self.backends.get(self.backend_name, {"type": "gptsovits", "api_url": self.cfg.get("api_url")})
+
+    def _model_entry(self):
+        return self.models_for(self.backend_name).get(self.model_name) or {}
+
+    def _ref_pair(self):
+        """(ref_audio, prompt_text) for the active model, falling back to the
+        global config pair."""
+        e = self._model_entry()
+        return (e.get("ref_audio") or self.cfg.get("ref_audio"),
+                e.get("prompt_text") or self.cfg.get("prompt_text"))
 
     def models_for(self, backend_name):
         b = self.backends.get(backend_name, {})
@@ -179,8 +192,8 @@ class Relay:
                 }, timeout=120)
                 r2 = requests.post(b["api_url"] + "/set_reference_audio", json={
                     "character_name": entry["character_name"],
-                    "audio_path": self.cfg["ref_audio"],
-                    "audio_text": self.cfg["prompt_text"],
+                    "audio_path": entry.get("ref_audio") or self.cfg["ref_audio"],
+                    "audio_text": entry.get("prompt_text") or self.cfg["prompt_text"],
                     "language": self.cfg.get("prompt_lang", "zh"),
                 }, timeout=120)
                 ok = r1.ok and r2.ok
@@ -307,12 +320,19 @@ class Relay:
                 "character_name": entry.get("character_name", self.model_name),
                 "text": text,
             }
-        else:
+        capture = (b.get("type") == "gptsovits" and self.cfg.get("emotion_carry"))
+        captured = bytearray() if capture else None
+        if b.get("type") == "gptsovits":
+            ref_audio, prompt_text = self._ref_pair()
+            if self.cfg.get("emotion_carry") and self._last_carry is not None:
+                carry_path, carry_text = self._last_carry
+                ref_audio, prompt_text = carry_path, carry_text
+                print(f"[relay] emotion carry: ref={carry_path}", flush=True)
             payload = {
                 "text": text,
                 "text_lang": self.cfg["text_lang"],
-                "ref_audio_path": self.cfg["ref_audio"],
-                "prompt_text": self.cfg["prompt_text"],
+                "ref_audio_path": ref_audio,
+                "prompt_text": prompt_text,
                 "prompt_lang": self.cfg["prompt_lang"],
                 "text_split_method": self.cfg["text_split"],
                 "streaming_mode": 2,
@@ -338,12 +358,47 @@ class Relay:
                 # raw mode is s16le mono: only queue whole samples
                 usable = len(buf) - (len(buf) % 2)
                 if usable > 0:
-                    self.audio_q.put(bytes(buf[:usable]))
+                    chunk = bytes(buf[:usable])
+                    self.audio_q.put(chunk)
+                    if captured is not None:
+                        captured.extend(chunk)
                     del buf[:usable]
         if first_byte is not None:
             print(f"[relay] generated: total {time.perf_counter() - t_start:.2f}s, "
                   f"first byte at {first_byte - t_start:.2f}s", flush=True)
+        if captured is not None and not self.abort.is_set():
+            self._store_carry(bytes(captured), text)
         self._refresh_menu()
+
+    def _store_carry(self, pcm: bytes, text: str):
+        """Keep the finished utterance as the next request's emotion-carry
+        reference (3-10 s; outside that range fall back to the anchor ref).
+        Each utterance gets a UNIQUE filename because both backends cache
+        reference features by path string."""
+        import wave
+        dur = len(pcm) / 2 / int(self.cfg["sr"])
+        if not (3.0 <= dur <= 10.0):
+            self._last_carry = None
+            print(f"[relay] carry skipped, duration {dur:.1f}s out of 3-10s", flush=True)
+            return
+        self._carry_seq += 1
+        path = os.path.join(BASE_DIR, f"carry_{self._carry_seq % 50:03d}.wav")
+        try:
+            with wave.open(path, "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(int(self.cfg["sr"]))
+                w.writeframes(pcm)
+            old = self._last_carry[0] if self._last_carry else None
+            self._last_carry = (path, text)
+            if old and old != path and os.path.exists(old):
+                try:
+                    os.remove(old)
+                except OSError:
+                    pass
+            print(f"[relay] carry stored: {path} ({dur:.1f}s)", flush=True)
+        except Exception as e:
+            print("carry store failed:", e, flush=True)
 
     def _refresh_menu(self):
         if self.icon is not None:
