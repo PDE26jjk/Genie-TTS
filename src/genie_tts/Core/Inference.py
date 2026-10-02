@@ -271,14 +271,15 @@ class GENIE:
         hist = _carry_history(prompt_audio)
         if hist:
             _trim_history(hist)
-        # CPU dynamic path only: a history copy of the text about to be
-        # generated makes the fp32 stage_decoder graph re-voice it (its
-        # internal sampler has no repetition penalty / explicit EOS; the GPU
-        # static path does not exhibit this) - generate fresh with no context
-        # and let the recording below replace the stale entry.
+        # A history copy of the text about to be generated makes the model
+        # re-voice it instead of speaking it: the history is part of the
+        # prompt, so repetition penalties on the generated tokens cannot
+        # suppress the EOS that "the sentence was already said" implies -
+        # this hits the static CUDA-graph path exactly like the dynamic one.
+        # Generate fresh with no context and let the recording below
+        # replace the stale entry.
         hist_ext = hist
-        if (static_engine is None and hist
-                and any(e.get("text", "").strip() == text.strip() for e in hist)):
+        if hist and any(e.get("text", "").strip() == text.strip() for e in hist):
             hist_ext = None
             print("[genie] carry skipped: current text duplicates a history "
                   "entry", flush=True)

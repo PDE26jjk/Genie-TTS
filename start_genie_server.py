@@ -26,8 +26,12 @@ CONFIG_FILE = os.path.join(BASE_DIR, "genie_server_config.json")
 with open(CONFIG_FILE, encoding="utf-8") as f:
     cfg = json.load(f)
 
-os.environ.setdefault("GENIE_DEVICE", cfg.get("device", "cpu"))
-if cfg.get("static_decode"):
+# resolve the final device first: GENIE_DEVICE (env) wins over the config,
+# and the static CUDA-graph decode is GPU-only - on CPU the fp32 2048-token
+# graph runs at RTFx ~0.3 while the dynamic graph is faster
+device = os.environ.get("GENIE_DEVICE") or cfg.get("device", "cpu")
+os.environ["GENIE_DEVICE"] = device
+if cfg.get("static_decode") and device != "cpu":
     os.environ.setdefault("GENIE_STATIC_DECODE", "1")
 if cfg.get("emotion_carry"):
     os.environ.setdefault("GENIE_EMOTION_CARRY", "1")
