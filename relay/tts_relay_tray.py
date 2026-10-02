@@ -47,7 +47,6 @@ DEFAULTS = {
     "prompt_lang": "zh",
     "sr": 32000,
     "auto_play": True,
-    "read_zcode": True,
     "seed": -1,
     "test_text": "你好，这是一段测试文本，用来快速检查当前后端和音色是否正常。",
     "checkpoints": {
@@ -180,26 +179,6 @@ class Relay:
                       f"({b['api_url']})", flush=True)
             except Exception as e:
                 print(f"[relay] carry sync failed ({b['api_url']}):", e, flush=True)
-        self._refresh_menu()
-        return enabled
-
-    # ---- ZCode read toggle ----
-    def set_read_zcode(self, enabled: bool):
-        """Persist the read-ZCode-replies toggle. The actual reading lives in
-        the standalone zcode_speech_watcher.py process, which polls this
-        config file - so toggling here needs no relay restart."""
-        enabled = bool(enabled)
-        self.cfg["read_zcode"] = enabled
-        try:
-            cfg = {}
-            if os.path.exists(CONFIG_FILE):
-                with open(CONFIG_FILE, encoding="utf-8") as f:
-                    cfg = json.load(f)
-            cfg["read_zcode"] = enabled
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print("failed to persist read_zcode:", e, flush=True)
         self._refresh_menu()
         return enabled
 
@@ -762,9 +741,6 @@ def main():
     def toggle_carry(icon, item):
         relay.set_carry(not relay.cfg.get("emotion_carry"))
 
-    def toggle_zcode(icon, item):
-        relay.set_read_zcode(not relay.cfg.get("read_zcode"))
-
     def quit_app(icon, item):
         icon.stop()
         httpd.shutdown()
@@ -827,8 +803,6 @@ def main():
         pystray.MenuItem("开始播放流", start_stream),
         pystray.MenuItem("停止并清空流", stop_stream),
         pystray.MenuItem("播放测试文本", play_test),
-        pystray.MenuItem("朗读ZCode回复", toggle_zcode,
-                         checked=lambda item: bool(relay.cfg.get("read_zcode"))),
         pystray.MenuItem("拼接参考(情绪延续)", toggle_carry,
                          checked=lambda item: bool(relay.cfg.get("emotion_carry"))),
         pystray.Menu.SEPARATOR,
