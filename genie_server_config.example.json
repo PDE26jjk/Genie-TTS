@@ -23,5 +23,9 @@
     }
   },
   "static_decode": true,
-  "emotion_carry": true
+  "emotion_carry": true,
+  "carry_characters": [
+    "dq"
+  ],
+  "_comment5": "carry_characters: voices allowed to use the token-carry emotion history (matched against the reference audio path). Some pretrained models re-voice or early-EOS with a long history - restrict carry to voices proven stable."
 }

@@ -47,9 +47,19 @@ def carry_enabled() -> bool:
 
 
 def _carry_history(prompt_audio):
-    """Per-character history list, stored on the cached ReferenceAudio."""
+    """Per-character history list, stored on the cached ReferenceAudio.
+    GENIE_CARRY_CHARACTERS (comma-separated substrings of the reference
+    audio path) restricts carry to those voices - some pretrained models
+    (feibi) re-voice or early-EOS when generating with a long history,
+    while fine-tuned ones (dq) tolerate it."""
     if not _carry_enabled:
         return None
+    allowed = [s.strip() for s in
+               os.getenv("GENIE_CARRY_CHARACTERS", "").split(",") if s.strip()]
+    if allowed:
+        path = getattr(prompt_audio, "audio_path", "") or ""
+        if not any(s in path for s in allowed):
+            return None
     hist = getattr(prompt_audio, "carry_history", None)
     if hist is None:
         hist = []
@@ -59,9 +69,10 @@ def _carry_history(prompt_audio):
 
 def _trim_history(hist):
     total = sum(len(e["tokens"]) for e in hist)
-    # keep at least the newest entry: dropping everything because one long
-    # utterance exceeds the cap would silently disable carry entirely
-    while len(hist) > 1 and total > HISTORY_MAX_TOKENS:
+    # a single over-cap entry must go too: it is usually a re-voiced
+    # runaway generation, and keeping it makes every later generation
+    # answer with immediate EOS (empty audio)
+    while hist and total > HISTORY_MAX_TOKENS:
         total -= len(hist[0]["tokens"])
         hist.pop(0)
 
@@ -79,6 +90,14 @@ def _extend_inputs(text_seq, text_bert, hist):
 
 def _append_history(hist, text_seq, text_bert, tokens, text: str = ""):
     if not tokens:
+        return
+    # re-voice guard: output far longer than the text implies means the
+    # model repeated itself - that runaway entry would poison the history
+    # chain and make every following generation answer with EOS
+    expected = max(len((text or "").strip()) / 5.0, 1.0) * 25 * 1.8
+    if len(tokens) > expected:
+        print(f"[genie] carry: suspected re-voicing ({len(tokens)} tokens vs "
+              f"~{expected:.0f} expected), not stored", flush=True)
         return
     # when a text key is given, keep at most one history copy of it: the
     # dynamic decoder re-voices a duplicated context (see tts_stream)

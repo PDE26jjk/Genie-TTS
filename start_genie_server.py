@@ -35,6 +35,12 @@ if cfg.get("static_decode") and device != "cpu":
     os.environ.setdefault("GENIE_STATIC_DECODE", "1")
 if cfg.get("emotion_carry"):
     os.environ.setdefault("GENIE_EMOTION_CARRY", "1")
+if cfg.get("carry_characters"):
+    # whitelist of voices allowed to use the token-carry history; some
+    # pretrained models degrade with a long history (re-voicing / EOS)
+    os.environ.setdefault(
+        "GENIE_CARRY_CHARACTERS",
+        ",".join(cfg["carry_characters"]))
 # every model (G2PW tokenizer included) is on local disk - never let a HF
 # hub probe hang the startup or silently demote G2PW to the G2pM fallback
 os.environ.setdefault("HF_HUB_OFFLINE", "1")

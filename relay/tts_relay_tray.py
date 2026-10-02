@@ -248,8 +248,13 @@ class Relay:
             except Exception:
                 pass
         # the play loop consumes this sentinel, closes the dead stream and
-        # opens a fresh one; safe whether it is blocked on get() or writing
-        self.audio_q.put(self._stream_restart)
+        # opens a fresh one; safe whether it is blocked on get() or writing.
+        # put_nowait: this runs on the tray/HTTP thread - blocking here if
+        # the queue ever filled up would look like a tray crash
+        try:
+            self.audio_q.put_nowait(self._stream_restart)
+        except queue.Full:
+            pass
         try:
             self.audio_q.put_nowait(self._stream_restart)
         except queue.Full:
