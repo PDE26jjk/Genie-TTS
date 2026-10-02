@@ -323,11 +323,11 @@ class Relay:
         capture = (b.get("type") == "gptsovits" and self.cfg.get("emotion_carry"))
         captured = bytearray() if capture else None
         if b.get("type") == "gptsovits":
+            # v1.5 hybrid anchoring: the per-model ANCHOR reference stays as
+            # the main ref (stable path -> backend ref cache keeps hitting);
+            # the previous utterance's wav rides along as an aux reference
+            # (ge averaged), nudging emotion while the anchor holds the timbre.
             ref_audio, prompt_text = self._ref_pair()
-            if self.cfg.get("emotion_carry") and self._last_carry is not None:
-                carry_path, carry_text = self._last_carry
-                ref_audio, prompt_text = carry_path, carry_text
-                print(f"[relay] emotion carry: ref={carry_path}", flush=True)
             payload = {
                 "text": text,
                 "text_lang": self.cfg["text_lang"],
@@ -338,6 +338,9 @@ class Relay:
                 "streaming_mode": 2,
                 "media_type": "raw",
             }
+            if self.cfg.get("emotion_carry") and self._last_carry is not None:
+                payload["aux_ref_audio_paths"] = [self._last_carry[0]]
+                print(f"[relay] emotion carry (aux): {self._last_carry[0]}", flush=True)
             seed = int(self.cfg.get("seed", -1))
             if seed >= 0:
                 payload["seed"] = seed  # fixed seed -> reproducible audio

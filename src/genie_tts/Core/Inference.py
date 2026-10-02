@@ -1,3 +1,5 @@
+import os
+
 import onnxruntime as ort
 import onnx
 from onnx import helper, TensorProto
@@ -16,6 +18,50 @@ MAX_T2S_LEN = 1000
 # crossfade to hide the re-decode boundary.
 STREAM_MIN_CHUNK_TOKENS = 16  # semantic tokens (25 Hz) per emitted chunk (~0.64 s)
 STREAM_FADE_SAMPLES = 640     # 20 ms crossfade at 32 kHz
+
+# Emotion carry-over (token level): keep the ANCHOR reference tokens at the
+# front and append a bounded sliding window of previous generated tokens, so
+# prosody chains across sentences while the anchor suppresses drift.
+CARRY_ENV = "GENIE_EMOTION_CARRY"
+HISTORY_MAX_TOKENS = 150  # ~6 s of semantic tokens at 25 Hz
+
+
+def _carry_history(prompt_audio):
+    """Per-character history list, stored on the cached ReferenceAudio."""
+    if not os.environ.get(CARRY_ENV):
+        return None
+    hist = getattr(prompt_audio, "carry_history", None)
+    if hist is None:
+        hist = []
+        prompt_audio.carry_history = hist
+    return hist
+
+
+def _trim_history(hist):
+    total = sum(len(e["tokens"]) for e in hist)
+    while hist and total > HISTORY_MAX_TOKENS:
+        total -= len(hist[0]["tokens"])
+        hist.pop(0)
+
+
+def _extend_inputs(text_seq, text_bert, hist):
+    """Prepend history utterances' text/bert to the encoder inputs.
+    Returns (text_seq_ext, text_bert_ext)."""
+    seqs = [np.asarray(e["phones"], dtype=text_seq.dtype).reshape(1, -1) for e in hist]
+    berts = [np.asarray(e["bert"], dtype=text_bert.dtype).reshape(-1, text_bert.shape[-1])
+             for e in hist]
+    seqs.append(text_seq.reshape(1, -1))
+    berts.append(text_bert.reshape(-1, text_bert.shape[-1]))
+    return np.concatenate(seqs, axis=1), np.concatenate(berts, axis=0)
+
+
+def _append_history(hist, text_seq, text_bert, tokens):
+    if not tokens:
+        return
+    hist.append({"phones": np.asarray(text_seq).copy(),
+                 "bert": np.asarray(text_bert).copy(),
+                 "tokens": [int(t) for t in tokens]})
+    _trim_history(hist)
 
 # ─── Static CUDA-graph T2S engine ────────────────────────────────────────────
 
@@ -169,6 +215,9 @@ class GENIE:
             prompt_audio.update_global_emb(prompt_encoder=prompt_encoder)
         is_pro = prompt_encoder is not None
 
+        hist = _carry_history(prompt_audio)
+        if hist:
+            _trim_history(hist)
         tok_iter: Iterator[tuple[np.ndarray, bool]]
         if static_engine is not None:
             tok_iter = self._t2s_stream_static(
@@ -176,7 +225,7 @@ class GENIE:
                 ref_bert=prompt_audio.text_bert, text_seq=text_seq,
                 text_bert=text_bert, ssl_content=prompt_audio.ssl_content,
                 encoder=encoder, first_stage_decoder=first_stage_decoder,
-                chunk_tokens=min_chunk_tokens)
+                chunk_tokens=min_chunk_tokens, hist=hist)
         else:
             tok_iter = self._t2s_stream(
                 ref_seq=prompt_audio.phonemes_seq,
@@ -187,7 +236,30 @@ class GENIE:
                 encoder=encoder,
                 first_stage_decoder=first_stage_decoder,
                 stage_decoder=stage_decoder,
-                chunk_tokens=min_chunk_tokens)
+                chunk_tokens=min_chunk_tokens, hist=hist)
+
+        # pass-through wrapper: remember the utterance's tokens when the
+        # generation ran to completion (not aborted), then store them as
+        # carry context for the next sentence
+        def _recording(base_iter):
+            generated = None
+            try:
+                for tokens, is_final in base_iter:
+                    if tokens is not None:
+                        generated = tokens
+                    yield tokens, is_final
+            finally:
+                if hist is not None and generated is not None and not self.stop_event.is_set():
+                    print(f"[genie] carry: +{len(generated.flatten())} tokens "
+                          f"(history {sum(len(e['tokens']) for e in hist)}/{HISTORY_MAX_TOKENS})", flush=True)
+                    _append_history(hist, text_seq, text_bert, generated.flatten().tolist())
+                elif hist is not None:
+                    print(f"[genie] carry store skipped: generated={'None' if generated is None else len(generated.flatten())} tokens, "
+                          f"stopped={self.stop_event.is_set()}", flush=True)
+                    print(f"[genie] carry history: {sum(len(e['tokens']) for e in hist)} tokens "
+                          f"from {len(hist)} utterance(s)", flush=True)
+
+        tok_iter = _recording(tok_iter)
 
         def decode(tokens: np.ndarray) -> Optional[np.ndarray]:
             if tokens is None or tokens.shape[-1] == 0:
@@ -247,10 +319,14 @@ class GENIE:
             encoder: ort.InferenceSession,
             first_stage_decoder: ort.InferenceSession,
             chunk_tokens: int,
+            hist: Optional[list] = None,
     ) -> Iterator[tuple[np.ndarray, bool]]:
         """Static CUDA-graph decode: prefill via the dynamic first-stage graph,
         then per-step replay of t2s_static.onnx; sampling in numpy."""
         eos = engine.vocab - 1
+        if hist:
+            text_seq, text_bert = _extend_inputs(text_seq=text_seq,
+                                             text_bert=text_bert, hist=hist)
         x, prompts = encoder.run(
             None,
             {
@@ -304,16 +380,20 @@ class GENIE:
             first_stage_decoder: ort.InferenceSession,
             stage_decoder: ort.InferenceSession,
             chunk_tokens: int,
+            hist: Optional[list] = None,
     ) -> Iterator[tuple[np.ndarray, bool]]:
         """Incremental T2S decoding; yields (generated token prefix, is_final)."""
+        if hist:
+            text_seq, text_bert = _extend_inputs(text_seq=text_seq,
+                                                 text_bert=text_bert, hist=hist)
         if 'CUDAExecutionProvider' in (stage_decoder.get_providers() or []):
             yield from self._t2s_stream_cuda(
                 ref_seq, ref_bert, text_seq, text_bert, ssl_content,
-                encoder, first_stage_decoder, stage_decoder, chunk_tokens)
+                encoder, first_stage_decoder, stage_decoder, chunk_tokens, hist)
         else:
             yield from self._t2s_stream_cpu(
                 ref_seq, ref_bert, text_seq, text_bert, ssl_content,
-                encoder, first_stage_decoder, stage_decoder, chunk_tokens)
+                encoder, first_stage_decoder, stage_decoder, chunk_tokens, hist)
 
     def _t2s_stream_cuda(
             self,
@@ -326,6 +406,7 @@ class GENIE:
             first_stage_decoder: ort.InferenceSession,
             stage_decoder: ort.InferenceSession,
             chunk_tokens: int,
+            hist: Optional[list] = None,
     ) -> Iterator[tuple[np.ndarray, bool]]:
         """CUDA IOBinding variant: the KV cache and embeddings stay resident in
         GPU memory across decode steps (run_with_ort_values), removing the
@@ -337,6 +418,9 @@ class GENIE:
             return ort.OrtValue.ortvalue_from_numpy(np.ascontiguousarray(arr),
                                                     device_type='cuda', device_id=0)
 
+        if hist:
+            text_seq, text_bert = _extend_inputs(text_seq=text_seq,
+                                                 text_bert=text_bert, hist=hist)
         # Encoder (one-shot): run on device, keep outputs on GPU.
         x, prompts = encoder.run(
             None,
@@ -348,6 +432,14 @@ class GENIE:
                 "ssl_content": ssl_content,
             },
         )
+        if hist:
+            hist_tok = np.asarray(
+                [[t for e in hist for t in e["tokens"]]], dtype=np.int64)
+            prompts = np.concatenate([prompts, hist_tok], axis=1)
+        if hist:
+            print(f"[genie] static carry: prompts={prompts.shape[1]} "
+                  f"(anchor {prompts.shape[1] - hist_tok.shape[1]} + hist {hist_tok.shape[1]}), "
+                  f"text_len={text_seq.shape[-1]}", flush=True)
         first_out = first_stage_decoder.run_with_ort_values(
             None, {"x": gpu(x), "prompts": gpu(prompts)}
         )
@@ -398,8 +490,12 @@ class GENIE:
             first_stage_decoder: ort.InferenceSession,
             stage_decoder: ort.InferenceSession,
             chunk_tokens: int,
+            hist: Optional[list] = None,
     ) -> Iterator[tuple[np.ndarray, bool]]:
         """Incremental T2S decoding; yields (generated token prefix, is_final)."""
+        if hist:
+            text_seq, text_bert = _extend_inputs(text_seq=text_seq,
+                                                 text_bert=text_bert, hist=hist)
         # Encoder
         x, prompts = encoder.run(
             None,
@@ -411,6 +507,11 @@ class GENIE:
                 "ssl_content": ssl_content,
             },
         )
+
+        if hist:
+            hist_tok = np.asarray(
+                [[t for e in hist for t in e["tokens"]]], dtype=np.int64)
+            prompts = np.concatenate([prompts, hist_tok], axis=1)
 
         # First Stage Decoder
         y, y_emb, *present_key_values = first_stage_decoder.run(

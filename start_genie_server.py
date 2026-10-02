@@ -28,6 +28,8 @@ with open(CONFIG_FILE, encoding="utf-8") as f:
 
 os.environ.setdefault("GENIE_DEVICE", cfg.get("device", "cpu"))
 os.environ.setdefault("GENIE_STATIC_DECODE", "1" if cfg.get("static_decode") else "0")
+os.environ.setdefault("GENIE_EMOTION_CARRY", "1" if cfg.get("emotion_carry") else "0")
+print("env:", os.environ.get("GENIE_EMOTION_CARRY"), "| static:", os.environ.get("GENIE_STATIC_DECODE"))
 
 
 # DLL directories must be registered before the first CUDA session is created
