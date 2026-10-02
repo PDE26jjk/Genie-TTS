@@ -392,12 +392,18 @@ class ModelManager:
         use_static = (os.getenv('GENIE_STATIC_DECODE', '0') == '1'
                       and os.path.exists(os.path.join(model_dir, 't2s_static.onnx')))
 
-        # prefer the fp16 static graph: half the weights, half the captured
-        # activation pool, half the KV cache - the main VRAM lever
+        # prefer the fp16 static graph on CUDA (half weights/KV/pool); the
+        # CPU EP executes fp16 via casts and is slower, so it runs the fp32
+        # graph - decoding semantics are identical either way
+        device_is_cpu = os.getenv('GENIE_DEVICE', 'gpu').lower() == 'cpu'
         static_fp16 = os.path.join(model_dir, 't2s_static_fp16.onnx')
         static_fp32 = os.path.join(model_dir, 't2s_static.onnx')
-        static_onnx = static_fp16 if os.path.exists(static_fp16) else static_fp32
+        if not device_is_cpu and os.path.exists(static_fp16):
+            static_onnx = static_fp16
+        else:
+            static_onnx = static_fp32
         GSVModelFile.T2S_STATIC_ONNX = static_onnx if os.path.exists(static_onnx) else None
+        self._static_device = 'cpu' if device_is_cpu else 'cuda'
 
         # NOTE: an fp16 first-stage decoder variant (t2s_first_stage_decoder_fp16.onnx)
         # currently trips ORT: onnxconverter-common leaves a Cast node in
@@ -484,7 +490,9 @@ class ModelManager:
                 # copy sessions in the server process (upstream issue).
                 try:
                     from .Core.Inference import StaticT2SEngine
-                    model_dict['T2S_STATIC'] = StaticT2SEngine(GSVModelFile.T2S_STATIC_ONNX)
+                    model_dict['T2S_STATIC'] = StaticT2SEngine(
+                        GSVModelFile.T2S_STATIC_ONNX,
+                        device=getattr(self, '_static_device', 'cuda'))
                 except Exception as e:
                     logger.warning(f"Static t2s engine unavailable: {e}")
                     model_dict['T2S_STATIC'] = None

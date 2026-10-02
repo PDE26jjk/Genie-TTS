@@ -39,7 +39,9 @@ def _carry_history(prompt_audio):
 
 def _trim_history(hist):
     total = sum(len(e["tokens"]) for e in hist)
-    while hist and total > HISTORY_MAX_TOKENS:
+    # keep at least the newest entry: dropping everything because one long
+    # utterance exceeds the cap would silently disable carry entirely
+    while len(hist) > 1 and total > HISTORY_MAX_TOKENS:
         total -= len(hist[0]["tokens"])
         hist.pop(0)
 
@@ -55,12 +57,18 @@ def _extend_inputs(text_seq, text_bert, hist):
     return np.concatenate(seqs, axis=1), np.concatenate(berts, axis=0)
 
 
-def _append_history(hist, text_seq, text_bert, tokens):
+def _append_history(hist, text_seq, text_bert, tokens, text: str = ""):
     if not tokens:
         return
+    # when a text key is given, keep at most one history copy of it: the
+    # dynamic decoder re-voices a duplicated context (see tts_stream)
+    key = (text or "").strip()
+    if key:
+        hist[:] = [e for e in hist if e.get("text", "").strip() != key]
     hist.append({"phones": np.asarray(text_seq).copy(),
                  "bert": np.asarray(text_bert).copy(),
-                 "tokens": [int(t) for t in tokens]})
+                 "tokens": [int(t) for t in tokens],
+                 "text": key})
     _trim_history(hist)
 
 # ─── Static CUDA-graph T2S engine ────────────────────────────────────────────
@@ -80,15 +88,24 @@ class StaticT2SEngine:
       - No torch anywhere; reset() H2D-loads the prefill cache via
         update_inplace with a full-size padded array."""
 
-    def __init__(self, onnx_path: str):
-        if "CUDAExecutionProvider" not in ort.get_available_providers():
-            raise RuntimeError("StaticT2SEngine requires the CUDA execution provider")
-        so = ort.SessionOptions()
-        so.add_session_config_entry("enable_cuda_graph", "1")
-        self.sess = ort.InferenceSession(
-            onnx_path, so,
-            providers=[("CUDAExecutionProvider",
-                        {"arena_extend_strategy": "kSameAsRequested"})])
+    def __init__(self, onnx_path: str, device: str = 'cuda'):
+        self.device = device
+        outs = None
+        if device == 'cuda':
+            if "CUDAExecutionProvider" not in ort.get_available_providers():
+                raise RuntimeError("StaticT2SEngine requires the CUDA execution provider")
+            so = ort.SessionOptions()
+            so.add_session_config_entry("enable_cuda_graph", "1")
+            self.sess = ort.InferenceSession(
+                onnx_path, so,
+                providers=[("CUDAExecutionProvider",
+                            {"arena_extend_strategy": "kSameAsRequested"})])
+        else:
+            # CPU: same graph, same numpy sampler - identical decoding
+            # semantics to the GPU path; no CUDA graph, but the same
+            # io_binding scheme (bound CPU OrtValues avoid re-allocating the
+            # ~150 MB KV outputs on every step)
+            self.sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
         outs = {o.name: o.shape for o in self.sess.get_outputs()}
         ins_meta = {i.name: i for i in self.sess.get_inputs()}
         ins = {name: m.shape for name, m in ins_meta.items()}
@@ -102,12 +119,14 @@ class StaticT2SEngine:
         self.kv_dtype = np.float16 if 'float16' in ins_meta["kv_k_in"].type else np.float32
         self.logits_dtype = np.float16 if 'float16' in self.sess.get_outputs()[0].type else np.float32
 
+        dev = 'cuda' if device == 'cuda' else 'cpu'
+        shape = (self.L, 1, self.max_len, self.H, self.D)
         self.kvk = ort.OrtValue.ortvalue_from_numpy(
-            np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=self.kv_dtype), "cuda", 0)
+            np.zeros(shape, dtype=self.kv_dtype), dev, 0)
         self.kvv = ort.OrtValue.ortvalue_from_numpy(
-            np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=self.kv_dtype), "cuda", 0)
+            np.zeros(shape, dtype=self.kv_dtype), dev, 0)
         self.logits_b = ort.OrtValue.ortvalue_from_numpy(
-            np.zeros((1, self.vocab), dtype=self.logits_dtype), "cuda", 0)
+            np.zeros((1, self.vocab), dtype=self.logits_dtype), dev, 0)
 
         self.io = self.sess.io_binding()
         self.io.bind_ortvalue_input("kv_k_in", self.kvk)
@@ -118,11 +137,10 @@ class StaticT2SEngine:
         self._warm = False
 
     def reset(self, present: List[np.ndarray], past_len: int):
-        """H2D-load the prefill KV (interleaved [pk0, pv0, pk1, pv1, ...])
-        produced by the first-stage graph. Full-size padded arrays so
-        update_inplace sizes match; values are cast to the cache dtype
-        (fp32 first-stage output -> fp16 cache when the static graph is
-        converted)."""
+        """Load the prefill KV (interleaved [pk0, pv0, pk1, pv1, ...]) produced
+        by the first-stage graph. Full-size padded arrays so update_inplace
+        sizes match; values are cast to the cache dtype (fp32 first-stage
+        output -> fp16 cache when the static graph is converted)."""
         full_k = np.zeros((self.L, 1, self.max_len, self.H, self.D), dtype=self.kv_dtype)
         full_v = np.zeros_like(full_k)
         for l in range(self.L):
@@ -229,6 +247,17 @@ class GENIE:
         hist = _carry_history(prompt_audio)
         if hist:
             _trim_history(hist)
+        # CPU dynamic path only: a history copy of the text about to be
+        # generated makes the fp32 stage_decoder graph re-voice it (its
+        # internal sampler has no repetition penalty / explicit EOS; the GPU
+        # static path does not exhibit this) - generate fresh with no context
+        # and let the recording below replace the stale entry.
+        hist_ext = hist
+        if (static_engine is None and hist
+                and any(e.get("text", "").strip() == text.strip() for e in hist)):
+            hist_ext = None
+            print("[genie] carry skipped: current text duplicates a history "
+                  "entry", flush=True)
         tok_iter: Iterator[tuple[np.ndarray, bool]]
         if static_engine is not None:
             tok_iter = self._t2s_stream_static(
@@ -236,7 +265,7 @@ class GENIE:
                 ref_bert=prompt_audio.text_bert, text_seq=text_seq,
                 text_bert=text_bert, ssl_content=prompt_audio.ssl_content,
                 encoder=encoder, first_stage_decoder=first_stage_decoder,
-                chunk_tokens=min_chunk_tokens, hist=hist)
+                chunk_tokens=min_chunk_tokens, hist=hist_ext)
         elif stage_decoder is not None:
             tok_iter = self._t2s_stream(
                 ref_seq=prompt_audio.phonemes_seq,
@@ -247,7 +276,7 @@ class GENIE:
                 encoder=encoder,
                 first_stage_decoder=first_stage_decoder,
                 stage_decoder=stage_decoder,
-                chunk_tokens=min_chunk_tokens, hist=hist)
+                chunk_tokens=min_chunk_tokens, hist=hist_ext)
         else:
             # static mode skips loading the stage decoder; if the static
             # engine also failed to build there is no t2s path at all
@@ -269,7 +298,8 @@ class GENIE:
                 if hist is not None and generated is not None and not self.stop_event.is_set():
                     print(f"[genie] carry: +{len(generated.flatten())} tokens "
                           f"(history {sum(len(e['tokens']) for e in hist)}/{HISTORY_MAX_TOKENS})", flush=True)
-                    _append_history(hist, text_seq, text_bert, generated.flatten().tolist())
+                    _append_history(hist, text_seq, text_bert, generated.flatten().tolist(),
+                                    text if static_engine is None else "")
                 elif hist is not None:
                     print(f"[genie] carry store skipped: generated={'None' if generated is None else len(generated.flatten())} tokens, "
                           f"stopped={self.stop_event.is_set()}", flush=True)
