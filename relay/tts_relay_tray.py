@@ -325,28 +325,46 @@ class Relay:
     def _generate(self, text):
         self.abort.clear()
         b = self.backend()
+        capture = bool(self.cfg.get("emotion_carry"))
+        captured = bytearray() if capture else None
+        # emotion carry v3, shared by both backends: once the sliding window
+        # has content, generate against concat(anchor, recent utterances)
+        ref_override = None
+        if capture:
+            # generating a sentence that is already in the reference makes
+            # the model echo it (repeats/mismatch) - fall back to anchor
+            norm = text.strip()
+            if any(u[1].strip() == norm for u in self._carry_utts):
+                print("[relay] carry skipped: current text duplicates a window entry", flush=True)
+            else:
+                concat_path, concat_text = self._build_concat_ref()
+                if concat_path is not None:
+                    ref_override = (concat_path, concat_text)
+                    print(f"[relay] concat ref: {concat_text[:40]}...", flush=True)
         if b.get("type") == "genie":
             entry = (self.cfg.get("genie_characters") or {}).get(self.model_name, {})
+            if capture:
+                ref_audio, prompt_text = self._ref_pair()
+                if ref_override:
+                    ref_audio, prompt_text = ref_override
+                # the genie server holds one reference per character; push the
+                # (possibly concatenated) one before generating - also resets
+                # a stale concat left over from the previous turn
+                requests.post(b["api_url"] + "/set_reference_audio", json={
+                    "character_name": entry.get("character_name", self.model_name),
+                    "audio_path": ref_audio,
+                    "audio_text": prompt_text,
+                    "language": entry.get("ref_lang", "Chinese"),
+                }, timeout=30).raise_for_status()
             payload = {
                 "character_name": entry.get("character_name", self.model_name),
                 "text": text,
             }
-        capture = (b.get("type") == "gptsovits" and self.cfg.get("emotion_carry"))
-        captured = bytearray() if capture else None
         if b.get("type") == "gptsovits":
             anchor_ref, _ = self._ref_pair()
             ref_audio, prompt_text = self._ref_pair()
-            if capture:
-                # generating a sentence that is already in the reference makes
-                # the model echo it (repeats/mismatch) - fall back to anchor
-                norm = text.strip()
-                if any(u[1].strip() == norm for u in self._carry_utts):
-                    print("[relay] carry skipped: current text duplicates a window entry", flush=True)
-                else:
-                    concat_path, concat_text = self._build_concat_ref()
-                    if concat_path is not None:
-                        ref_audio, prompt_text = concat_path, concat_text
-                        print(f"[relay] concat ref: {concat_text[:40]}...", flush=True)
+            if ref_override:
+                ref_audio, prompt_text = ref_override
             payload = {
                 "text": text,
                 "text_lang": self.cfg["text_lang"],
