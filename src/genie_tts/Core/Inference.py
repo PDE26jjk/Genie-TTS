@@ -205,6 +205,7 @@ class GENIE:
             language: str = 'japanese',
             min_chunk_tokens: int = STREAM_MIN_CHUNK_TOKENS,
             fade_samples: int = STREAM_FADE_SAMPLES,
+            vocoder_overlap_tokens: int = 0,
             static_engine=None,
     ) -> Iterator[np.ndarray]:
         text = '。' + text  # 防止漏第一句。
@@ -261,16 +262,40 @@ class GENIE:
 
         tok_iter = _recording(tok_iter)
 
+        # incremental vocoder: when overlap is enabled, each chunk is decoded
+        # with only the last N tokens of context instead of the whole prefix,
+        # making per-chunk cost O(overlap + chunk) instead of O(prefix)
+        ctx_n = max(0, int(vocoder_overlap_tokens))
+        prev_tokens: Optional[np.ndarray] = None
+        live_pieces: List[np.ndarray] = []  # dbg: what we actually emitted
+
         def decode(tokens: np.ndarray) -> Optional[np.ndarray]:
+            nonlocal prev_tokens
             if tokens is None or tokens.shape[-1] == 0:
                 return None
-            feed = {"text_seq": text_seq, "pred_semantic": tokens}
-            if is_pro:
-                feed["ge"] = prompt_audio.global_emb
-                feed["ge_advanced"] = prompt_audio.global_emb_advanced
+            # the t2s stream yields CUMULATIVE prefixes. Full-prefix mode
+            # (ctx_n == 0) re-decodes the whole prefix so the emitted stream
+            # stays sample-exact. Overlap mode decodes only a small context
+            # tail plus the tokens past what was already decoded, keeping
+            # per-chunk vocoder cost flat.
+            if ctx_n and prev_tokens is not None:
+                new_only = tokens[:, :, prev_tokens.shape[-1]:]
+                feed = np.concatenate(
+                    [prev_tokens[:, :, -ctx_n:], new_only], axis=-1)
             else:
-                feed["ref_audio"] = prompt_audio.audio_32k
-            return vocoder.run(None, feed)[0]
+                feed = tokens
+            if dbg:
+                print(f"[t2s-stream] voc feed={int(feed.shape[-1])}tok "
+                      f"(ctx_n={ctx_n})", flush=True)
+            feed_dict = {"text_seq": text_seq, "pred_semantic": feed}
+            if is_pro:
+                feed_dict["ge"] = prompt_audio.global_emb
+                feed_dict["ge_advanced"] = prompt_audio.global_emb_advanced
+            else:
+                feed_dict["ref_audio"] = prompt_audio.audio_32k
+            audio = vocoder.run(None, feed_dict)[0]
+            prev_tokens = tokens  # cumulative: already contains everything
+            return audio
 
         sent = 0      # samples of the ideal signal already emitted
         tail = None   # held-back samples (fade window) not yet emitted
@@ -282,6 +307,11 @@ class GENIE:
         for tokens, is_final in tok_iter:
             if self.stop_event.is_set():
                 return
+            # with overlap decode the context segment (always exactly
+            # ctx_n * 1280 samples - the vocoder adds only tail padding) is
+            # re-decoded context that must never be emitted again
+            if ctx_n and prev_tokens is not None:
+                sent = ctx_n * 1280
             t_tok = _time.perf_counter()
             full = decode(tokens)
             t_dec = _time.perf_counter()
@@ -296,25 +326,47 @@ class GENIE:
                 full = full[0]
             length = full.shape[-1]
             if is_final:
+                out = None
                 if tail is None:
                     if length > sent:
-                        yield full[sent:]
+                        out = full[sent:]
                 elif length > sent + fade_samples:
                     blended = tail * (1.0 - ramp) + full[sent:sent + fade_samples] * ramp
-                    yield np.concatenate([blended, full[sent + fade_samples:]], axis=-1)
+                    out = np.concatenate([blended, full[sent + fade_samples:]], axis=-1)
                 else:
                     # Degenerate final chunk: flush without blending.
-                    yield np.concatenate([tail, full[sent:]], axis=-1)
+                    out = np.concatenate([tail, full[sent:]], axis=-1)
+                if out is not None:
+                    if dbg and ctx_n:
+                        live_pieces.append(out)
+                        # decode the WHOLE utterance prefix once for an offline
+                        # alignment/residual comparison against the live output
+                        feed_dict = {"text_seq": text_seq, "pred_semantic": prev_tokens}
+                        if is_pro:
+                            feed_dict["ge"] = prompt_audio.global_emb
+                            feed_dict["ge_advanced"] = prompt_audio.global_emb_advanced
+                        else:
+                            feed_dict["ref_audio"] = prompt_audio.audio_32k
+                        ref_full = vocoder.run(None, feed_dict)[0]
+                        if ref_full.ndim == 2:
+                            ref_full = ref_full[0]
+                        np.savez('_dbg_overlap_check.npz',
+                                 live=np.concatenate(live_pieces), full=ref_full,
+                                 ctx_n=ctx_n)
+                    yield out
                 return
 
             new_end = length - fade_samples
             if new_end <= sent:
                 continue  # not enough new audio to emit yet
             if tail is None:
-                yield full[:new_end]
+                out = full[sent:new_end]
             else:
                 blended = tail * (1.0 - ramp) + full[sent:sent + fade_samples] * ramp
-                yield np.concatenate([blended, full[sent + fade_samples:new_end]], axis=-1)
+                out = np.concatenate([blended, full[sent + fade_samples:new_end]], axis=-1)
+            if dbg:
+                live_pieces.append(out)
+            yield out
             sent = new_end
             tail = full[new_end:]
 

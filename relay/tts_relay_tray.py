@@ -102,6 +102,8 @@ class Relay:
         self._anchor_sr = None
         self._utt_end = object()
         self._stream_restart = object()
+        # playback prebuffer in seconds; overridden per backend entry
+        self._play_prebuffer = float(cfg.get("prebuffer_s", 1.5))
 
     # ---- backend/model helpers ----
     def backend(self):
@@ -297,7 +299,7 @@ class Relay:
             # prebuffer: hold audio until this many seconds are queued before
             # the first write of each burst, so chunky backends (CPU mode)
             # don't starve the device between generation chunks
-            prebuf_bytes = int(float(self.cfg.get("prebuffer_s", 1.5)) *
+            prebuf_bytes = int(self._play_prebuffer *
                                int(self.cfg["sr"])) * 2
             pending = bytearray()
 
@@ -338,6 +340,10 @@ class Relay:
     def _generate(self, text):
         self.abort.clear()
         b = self.backend()
+        # per-backend prebuffer: fast backends start almost immediately,
+        # near-realtime ones (CPU) need a cushion against chunk jitter
+        self._play_prebuffer = float(b.get("prebuffer_s",
+                                           self.cfg.get("prebuffer_s", 1.5)))
         capture = bool(self.cfg.get("emotion_carry"))
         captured = bytearray() if capture else None
         # emotion carry v3, shared by both backends: once the sliding window

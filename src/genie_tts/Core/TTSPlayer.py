@@ -15,6 +15,10 @@ from ..ModelManager import model_manager
 from ..Utils.Shared import context
 from ..Utils.Utils import clear_queue
 
+
+def _is_cpu() -> bool:
+    return os.environ.get('GENIE_DEVICE', 'gpu').lower() == 'cpu'
+
 logger = logging.getLogger(__name__)
 
 STREAM_END = 'STREAM_END'  # 这是一个特殊的标记，表示文本流结束
@@ -99,9 +103,11 @@ class TTSPlayer:
                     static_engine=gsv_model.T2S_STATIC,
                     # CPU streaming: the vocoder re-decodes the full prefix per
                     # chunk, so small chunks both starve playback and square
-                    # the total decode work. 48 tokens ≈ 1.9 s of audio.
-                    min_chunk_tokens=(48 if os.environ.get('GENIE_DEVICE', 'gpu').lower() == 'cpu'
-                                      else 16),
+                    # the total decode work. 48 tokens ≈ 1.9 s of audio, and
+                    # incremental decoding (24-token overlap) keeps the
+                    # per-chunk vocoder cost flat instead of O(prefix).
+                    min_chunk_tokens=(48 if _is_cpu() else 16),
+                    vocoder_overlap_tokens=(24 if _is_cpu() else 0),
                 )
 
                 # Intra-sentence streaming: dispatch each audio chunk as soon
