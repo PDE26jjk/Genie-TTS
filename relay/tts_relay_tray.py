@@ -440,6 +440,7 @@ class Relay:
         return chunks
 
     def _generate(self, text):
+        print(f"[relay] speak: {text}", flush=True)
         # a freshly popped item always generates: the abort flag belongs to
         # stop/switch actions on IN-FLIGHT generation, and leaving it set
         # (backend switch -> stop()) would silently swallow new items
