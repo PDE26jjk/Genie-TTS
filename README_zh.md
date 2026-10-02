@@ -283,15 +283,39 @@ genie.start_server(
 
 托盘 UI 只需要额外装 `pip install pystray pillow`（requests / numpy / sounddevice 本来就是 Genie 的依赖）。
 
-1. 编辑 `relay/tts_relay_config.json`：
+1. 从模板创建运行配置（个人配置不入库，clone 后仓库里只有模板）：
+
+   ```powershell
+   Copy-Item relay	ts_relay_config.example.json relay	ts_relay_config.json
+   Copy-Item genie_server_config.example.json genie_server_config.json
+   ```
+
+   模板以官方 **Feibi** 角色（`CharacterModels/v2ProPlus/feibi`，首次使用从 HuggingFace 自动下载）为默认音色。然后编辑 `relay/tts_relay_config.json`，常见字段：
    - `backends`：每个后端的 URL 与类型（`gptsovits` 或 `genie`）。
    - `checkpoints`：GPT-SoVITS 微调权重（相对路径由 api_v2 进程解析，保持相对其包目录）。
-   - `genie_characters`：Genie 后端的 ONNX 角色目录。
+   - `genie_characters`：Genie 后端的 ONNX 角色目录（`onnx_model_dir` 必填，切换角色时按它加载）。
    - `ref_audio` / `prompt_text`：克隆音色的参考音频（绝对路径）。
    - `test_text`、`volume`、`auto_play`、`seed`（-1 = 韵律随机）。
+2. 启动需要的后端：
 
-   仓库附带以官方 **Feibi** 角色（`CharacterModels/v2ProPlus/feibi`，首次使用从 HuggingFace 自动下载）为默认音色的模板配置：`genie_server_config.example.json` 与 `relay/tts_relay_config.example.json`。个人运行配置（`genie_server_config.json`、`relay/tts_relay_config.json`）不入库——复制模板后自行修改。
-2. 启动需要的后端（GPT-SoVITS 整合包的 api_v2、本仓库的 `start_genie_server.py`）。
+   ```powershell
+   # ① GPT-SoVITS 整合包的 api_v2（可选；端口 9880 对应 relay 的 GPT-SoVITS 后端）
+   cd <GPT-SoVITS 整合包目录>
+   runtime\python.exe api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS\configs	ts_infer.yaml
+
+   # ② Genie GPU 模式（本仓库根目录；device 取 genie_server_config.json 的 "gpu"，
+   #    静态 CUDA-graph 自动启用，端口 9882）
+   cd <Genie-TTS 仓库目录>
+   .venv\Scripts\python.exe start_genie_server.py
+
+   # ③ Genie CPU 模式（自动禁用静态图；端口 9883 对应 relay 的 Genie-CPU 后端）
+   $env:GENIE_DEVICE='cpu'; $env:GENIE_PORT='9883'
+   .venv\Scripts\python.exe start_genie_server.py
+   ```
+
+   `GENIE_DEVICE` 环境变量优先于配置文件的 `device` 字段；GPU 模式下
+   `static_decode=true` 且角色目录存在 `t2s_static_fp16.onnx` 时走静态
+   CUDA-graph 解码（见上文 **音色模型图：动态 vs 静态**）。
 3. 启动中转站：
 
 ```powershell

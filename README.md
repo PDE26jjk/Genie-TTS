@@ -306,22 +306,48 @@ Features:
 Extra dependency only for the tray UI: `pip install pystray pillow`
 (requests / numpy / sounddevice are already Genie dependencies).
 
-1. Edit `relay/tts_relay_config.json`:
+1. Create the runtime configs from the templates (personal configs are
+   gitignored - a fresh clone only has the templates):
+
+   ```powershell
+   Copy-Item relay	ts_relay_config.example.json relay	ts_relay_config.json
+   Copy-Item genie_server_config.example.json genie_server_config.json
+   ```
+
+   The templates ship the official **Feibi** character
+   (`CharacterModels/v2ProPlus/feibi`, auto-downloaded from HuggingFace) as
+   the default voice. Then edit `relay/tts_relay_config.json`; the common
+   fields:
    - `backends`: URL + type of each backend (`gptsovits` or `genie`).
    - `checkpoints`: GPT-SoVITS fine-tuned checkpoints (paths are resolved by
      the api_v2 process, so keep them relative to that package).
-   - `genie_characters`: ONNX character dirs for the Genie backend.
+   - `genie_characters`: ONNX character dirs for the Genie backend
+     (`onnx_model_dir` is required - switching loads the character by it).
    - `ref_audio` / `prompt_text`: the voice-cloning reference (absolute path).
    - `test_text`, `volume`, `auto_play`, `seed` (-1 = random prosody).
+2. Start the backends you want:
 
-   The repo ships template configs with the official **Feibi** character
-   (`CharacterModels/v2ProPlus/feibi`, auto-downloaded from HuggingFace)
-   as the default voice: `genie_server_config.example.json` and
-   `relay/tts_relay_config.example.json`. Your personal runtime configs
-   (`genie_server_config.json`, `relay/tts_relay_config.json`) are
-   gitignored - copy the templates and edit them.
-2. Start the backends you want (api_v2 from the GPT-SoVITS package,
-   `start_genie_server.py` from this repo).
+   ```powershell
+   # (1) api_v2 from the GPT-SoVITS package (optional; port 9880 = the
+   #     relay's GPT-SoVITS backend)
+   cd <GPT-SoVITS package dir>
+   runtime\python.exe api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS\configs	ts_infer.yaml
+
+   # (2) Genie GPU mode (repo root; device comes from genie_server_config.json's
+   #     "gpu", static CUDA-graph enabled automatically, port 9882)
+   cd <Genie-TTS repo dir>
+   .venv\Scripts\python.exe start_genie_server.py
+
+   # (3) Genie CPU mode (static decode disabled automatically; port 9883 =
+   #     the relay's Genie-CPU backend)
+   $env:GENIE_DEVICE='cpu'; $env:GENIE_PORT='9883'
+   .venv\Scripts\python.exe start_genie_server.py
+   ```
+
+   `GENIE_DEVICE` overrides the config file's `device` field. On GPU,
+   `static_decode=true` plus a `t2s_static_fp16.onnx` in the character
+   directory selects the static CUDA-graph decode (see **Voice Model
+   Graphs** above).
 3. Start the relay:
 
 ```powershell
