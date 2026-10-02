@@ -724,6 +724,14 @@ def main():
     cfg = load_config()
     relay = Relay(cfg)
     Handler.relay = relay
+    # hard crashes (native code, icon thread) leave nothing in stderr; at
+    # least capture the fatal stack for post-mortem
+    import faulthandler
+    try:
+        faulthandler.enable(open(os.path.join(BASE_DIR, "relay_fatal.log"),
+                                 "w", encoding="utf-8"))
+    except Exception:
+        pass
 
     # Exclusive bind: http.server sets SO_REUSEADDR, which on Windows
     # silently allows a second instance to double-bind the same port -
