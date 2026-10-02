@@ -14,6 +14,7 @@
 # Run:  runtime\pythonw.exe tts_relay_tray.py   (pythonw hides the console)
 import json
 import os
+import re
 import sys
 import queue
 import threading
@@ -29,7 +30,10 @@ from PIL import Image, ImageDraw, ImageFont
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "tts_relay_config.json")
 
-HOOK_MARKER = os.path.join(os.path.expanduser("~"), ".zcode", "hooks", "tts_off")
+# All TTS traffic is localhost; never let a system proxy (Fiddler etc.)
+# intercept it - proxied loopback requests fail with 502.
+HTTP = requests.Session()
+HTTP.trust_env = False
 
 DEFAULTS = {
     "api_url": "http://127.0.0.1:9880",
@@ -43,6 +47,7 @@ DEFAULTS = {
     "prompt_lang": "zh",
     "sr": 32000,
     "auto_play": True,
+    "read_zcode": True,
     "seed": -1,
     "test_text": "你好，这是一段测试文本，用来快速检查当前后端和音色是否正常。",
     "checkpoints": {
@@ -82,6 +87,10 @@ class Relay:
             else next(iter(self.backends))
         # active model entry name (checkpoint for gptsovits, character for genie)
         self.model_name = cfg.get("default_checkpoint")
+        # the saved model may belong to another backend; fall back to the
+        # first model of the active one (same rule as set_backend)
+        if self.model_name not in self.models_for(self.backend_name):
+            self.model_name = next(iter(self.models_for(self.backend_name)), None)
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self.texts = []  # pending texts (FIFO)
@@ -138,7 +147,7 @@ class Relay:
         b = self.backend()
         if b.get("type") == "genie":
             try:
-                requests.post(b["api_url"] + "/carry",
+                HTTP.post(b["api_url"] + "/carry",
                               json={"enabled": bool(self.cfg.get("emotion_carry"))},
                               timeout=5)
             except Exception:
@@ -165,12 +174,32 @@ class Relay:
         b = self.backend()
         if b.get("type") == "genie":
             try:
-                requests.post(b["api_url"] + "/carry",
+                HTTP.post(b["api_url"] + "/carry",
                               json={"enabled": enabled}, timeout=5)
                 print(f"[relay] carry -> {'on' if enabled else 'off'} "
                       f"({b['api_url']})", flush=True)
             except Exception as e:
                 print(f"[relay] carry sync failed ({b['api_url']}):", e, flush=True)
+        self._refresh_menu()
+        return enabled
+
+    # ---- ZCode read toggle ----
+    def set_read_zcode(self, enabled: bool):
+        """Persist the read-ZCode-replies toggle. The actual reading lives in
+        the standalone zcode_speech_watcher.py process, which polls this
+        config file - so toggling here needs no relay restart."""
+        enabled = bool(enabled)
+        self.cfg["read_zcode"] = enabled
+        try:
+            cfg = {}
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, encoding="utf-8") as f:
+                    cfg = json.load(f)
+            cfg["read_zcode"] = enabled
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print("failed to persist read_zcode:", e, flush=True)
         self._refresh_menu()
         return enabled
 
@@ -238,12 +267,12 @@ class Relay:
         try:
             if b.get("type") == "genie":
                 entry = models[name]
-                r1 = requests.post(b["api_url"] + "/load_character", json={
+                r1 = HTTP.post(b["api_url"] + "/load_character", json={
                     "character_name": entry["character_name"],
                     "onnx_model_dir": entry.get("onnx_model_dir", ""),
                     "language": entry.get("language", "Chinese"),
                 }, timeout=120)
-                r2 = requests.post(b["api_url"] + "/set_reference_audio", json={
+                r2 = HTTP.post(b["api_url"] + "/set_reference_audio", json={
                     "character_name": entry["character_name"],
                     "audio_path": entry.get("ref_audio") or self.cfg["ref_audio"],
                     "audio_text": entry.get("prompt_text") or self.cfg["prompt_text"],
@@ -252,9 +281,9 @@ class Relay:
                 ok = r1.ok and r2.ok
                 msg = f"{r1.status_code}/{r2.status_code}"
             else:
-                r1 = requests.get(b["api_url"] + "/set_gpt_weights",
+                r1 = HTTP.get(b["api_url"] + "/set_gpt_weights",
                                   params={"weights_path": models[name]["gpt"]}, timeout=120)
-                r2 = requests.get(b["api_url"] + "/set_sovits_weights",
+                r2 = HTTP.get(b["api_url"] + "/set_sovits_weights",
                                   params={"weights_path": models[name]["sovits"]}, timeout=120)
                 ok = r1.ok and r2.ok
                 msg = f"{r1.status_code}/{r2.status_code}"
@@ -481,7 +510,7 @@ class Relay:
                 payload["seed"] = seed  # fixed seed -> reproducible audio
         t_start = time.perf_counter()
         first_byte = None
-        with requests.post(b["api_url"] + "/tts", json=payload,
+        with HTTP.post(b["api_url"] + "/tts", json=payload,
                            stream=True, timeout=30) as r:
             r.raise_for_status()
             buf = bytearray()
@@ -724,13 +753,8 @@ def main():
     def toggle_carry(icon, item):
         relay.set_carry(not relay.cfg.get("emotion_carry"))
 
-    def toggle_hook(icon, item):
-        # the ZCode Stop-hook stays silent while the marker file exists
-        if os.path.exists(HOOK_MARKER):
-            os.remove(HOOK_MARKER)
-        else:
-            os.makedirs(os.path.dirname(HOOK_MARKER), exist_ok=True)
-            open(HOOK_MARKER, "w").close()
+    def toggle_zcode(icon, item):
+        relay.set_read_zcode(not relay.cfg.get("read_zcode"))
 
     def quit_app(icon, item):
         icon.stop()
@@ -794,8 +818,8 @@ def main():
         pystray.MenuItem("开始播放流", start_stream),
         pystray.MenuItem("停止并清空流", stop_stream),
         pystray.MenuItem("播放测试文本", play_test),
-        pystray.MenuItem("朗读ZCode回复", toggle_hook,
-                         checked=lambda item: not os.path.exists(HOOK_MARKER)),
+        pystray.MenuItem("朗读ZCode回复", toggle_zcode,
+                         checked=lambda item: bool(relay.cfg.get("read_zcode"))),
         pystray.MenuItem("拼接参考(情绪延续)", toggle_carry,
                          checked=lambda item: bool(relay.cfg.get("emotion_carry"))),
         pystray.Menu.SEPARATOR,

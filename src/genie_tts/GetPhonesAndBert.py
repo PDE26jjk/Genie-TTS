@@ -39,6 +39,8 @@ def _expand_roberta_output(text_bert: np.ndarray, word2ph: list[int], num_phones
         text_bert = text_bert[1:-1]
 
     if text_bert.shape[0] == len(word2ph):
+        if num_phones == 0:
+            return np.zeros((0, text_bert.shape[1]), dtype=np.float32)
         repeated = [
             np.repeat(text_bert[idx: idx + 1], repeats=count, axis=0)
             for idx, count in enumerate(word2ph)
@@ -100,9 +102,16 @@ def get_phones_and_bert(prompt_text: str, language: str = 'japanese') -> Tuple[n
 
         for chunk in split:
             phones_seq, text_bert = _get_phones_and_bert_pure_lang(chunk['content'], chunk['language'])
+            if len(phones_seq) == 0:
+                # symbol-only chunk (arrows, math signs, ...): nothing speakable
+                continue
             list_phones.append(phones_seq)
             list_berts.append(text_bert)
 
+        if not list_phones:
+            # whole text was symbol-only; return empty so callers can skip
+            return (np.zeros((1, 0), dtype=np.int64),
+                    np.zeros((0, BERT_FEATURE_DIM), dtype=np.float32))
         phones_seq = np.concatenate(list_phones, axis=1)
         text_bert = np.concatenate(list_berts, axis=0)
     else:

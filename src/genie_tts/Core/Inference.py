@@ -258,6 +258,10 @@ class GENIE:
     ) -> Iterator[np.ndarray]:
         text = '。' + text  # 防止漏第一句。
         text_seq, text_bert = get_phones_and_bert(text, language=language)
+        if text_seq.shape[-1] == 0:
+            # symbol-only input (arrows, math signs...): nothing speakable
+            print("[genie] tts: nothing speakable after G2P:", text[:30], flush=True)
+            return
 
         # V2Pro/V2ProPlus: speaker embeddings are shared across all chunks.
         if prompt_encoder is not None:
