@@ -139,11 +139,26 @@ class Relay:
         self.stop()
         self._carry_utts = []
         self._anchor_pcm = None
+        old_backend, old_model = self.backend_name, self.model_name
         self.backend_name = name
         models = self.models_for(name)
         if self.model_name not in models:
             self.model_name = next(iter(models), None)
         b = self.backend()
+        # leaving a genie backend: free its resident character, otherwise
+        # the orphaned ORT sessions keep multi-GB host memory pinned
+        if name != old_backend:
+            old_b = self.backends.get(old_backend, {})
+            if old_b.get("type") == "genie" and old_model:
+                old_char = (self.cfg.get("genie_characters") or {}) \
+                    .get(old_model, {}).get("character_name")
+                if old_char:
+                    try:
+                        HTTP.post(old_b["api_url"] + "/unload_character",
+                                  json={"character_name": old_char}, timeout=30)
+                        print(f"[relay] unloaded character '{old_char}'", flush=True)
+                    except Exception:
+                        pass
         if b.get("type") == "genie":
             try:
                 HTTP.post(b["api_url"] + "/carry",
@@ -234,6 +249,26 @@ class Relay:
             pass
         self._refresh_menu()
 
+    def _unload_genie_character(self, model_name, api_url=None):
+        """Unload the character behind a tray model name on the genie server.
+        Keeps exactly one character resident: ORT sessions of unused voices
+        otherwise pile up to multiple GB of host memory."""
+        if not model_name:
+            return
+        entry = self.models_for(self.backend_name).get(model_name) or {}
+        char = entry.get("character_name")
+        if not char:
+            return
+        url = api_url or (self.backends.get(self.backend_name, {}).get("api_url"))
+        if not url:
+            return
+        try:
+            HTTP.post(url + "/unload_character",
+                      json={"character_name": char}, timeout=30)
+            print(f"[relay] unloaded character '{char}'", flush=True)
+        except Exception as e:
+            print(f"[relay] unload '{char}' failed: {e}", flush=True)
+
     def switch_model(self, name):
         """Switch the active model on the current backend."""
         models = self.models_for(self.backend_name)
@@ -245,6 +280,7 @@ class Relay:
         b = self.backend()
         try:
             if b.get("type") == "genie":
+                old = self.model_name
                 entry = models[name]
                 r1 = HTTP.post(b["api_url"] + "/load_character", json={
                     "character_name": entry["character_name"],
@@ -259,6 +295,10 @@ class Relay:
                 }, timeout=120)
                 ok = r1.ok and r2.ok
                 msg = f"{r1.status_code}/{r2.status_code}"
+                # swap, don't stack: drop the previous voice once the new
+                # one is live
+                if ok and old and old != name:
+                    self._unload_genie_character(old, b["api_url"])
             else:
                 r1 = HTTP.get(b["api_url"] + "/set_gpt_weights",
                                   params={"weights_path": models[name]["gpt"]}, timeout=120)
