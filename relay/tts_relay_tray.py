@@ -282,11 +282,19 @@ class Relay:
             if b.get("type") == "genie":
                 old = self.model_name
                 entry = models[name]
+                # unload FIRST: two static CUDA-graph voices don't fit in
+                # VRAM together, and freeing before loading keeps the peak
+                # at a single resident character
+                if old and old != name:
+                    self._unload_genie_character(old, b["api_url"])
                 r1 = HTTP.post(b["api_url"] + "/load_character", json={
                     "character_name": entry["character_name"],
                     "onnx_model_dir": entry.get("onnx_model_dir", ""),
                     "language": entry.get("language", "Chinese"),
                 }, timeout=120)
+                if not r1.ok:
+                    self._refresh_menu()
+                    return False, f"load_character {r1.status_code}: {r1.text[:120]}"
                 r2 = HTTP.post(b["api_url"] + "/set_reference_audio", json={
                     "character_name": entry["character_name"],
                     "audio_path": entry.get("ref_audio") or self.cfg["ref_audio"],
@@ -295,10 +303,6 @@ class Relay:
                 }, timeout=120)
                 ok = r1.ok and r2.ok
                 msg = f"{r1.status_code}/{r2.status_code}"
-                # swap, don't stack: drop the previous voice once the new
-                # one is live
-                if ok and old and old != name:
-                    self._unload_genie_character(old, b["api_url"])
             else:
                 r1 = HTTP.get(b["api_url"] + "/set_gpt_weights",
                                   params={"weights_path": models[name]["gpt"]}, timeout=120)

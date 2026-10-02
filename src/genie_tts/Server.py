@@ -53,14 +53,21 @@ class TTSPayload(BaseModel):
 @app.post("/load_character")
 def load_character_endpoint(payload: CharacterPayload):
     try:
-        model_manager.load_character(
+        ok = model_manager.load_character(
             character_name=payload.character_name,
             model_dir=payload.onnx_model_dir,
             language=normalize_language(payload.language),
         )
-        return {"status": "success", "message": f"Character '{payload.character_name}' loaded."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    if not ok:
+        # load_character logs the real cause and returns False; surface it
+        # so callers (relay switch) don't mistake a dead voice for a live one
+        raise HTTPException(
+            status_code=500,
+            detail=f"failed to load character '{payload.character_name}' "
+                   f"from '{payload.onnx_model_dir}'")
+    return {"status": "success", "message": f"Character '{payload.character_name}' loaded."}
 
 
 @app.post("/unload_character")

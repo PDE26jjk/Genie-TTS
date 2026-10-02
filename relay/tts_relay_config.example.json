@@ -1,7 +1,7 @@
 {
   "_comment1": "Example relay tray config - copy to relay/tts_relay_config.json and edit. Every '_comment*' key is documentation only.",
   "_comment2": "default_backend picks the engine; default_checkpoint must be a model name of that backend (the tray falls back to the backend's first model otherwise).",
-  "_comment3": "genie_characters entries map tray model names to Genie server characters. ref_audio for 'feibi-ONNX' ships with the HF character download (relative to the Genie-TTS repo root, which is the relay's working directory); the dq entry is an EXAMPLE pointing at your own private voice - replace the paths.",
+  "_comment3": "genie_characters entries map tray model names to Genie server characters; onnx_model_dir is required - the relay loads the character on switch and unloads the previous one (single resident voice). dq is an EXAMPLE of a private voice.",
   "_comment4": "max_chunk_chars caps per-queue-item length (GPU handles 180; CPU is happier with 90). prebuffer_s trades latency for stability on slow backends.",
   "api_url": "http://127.0.0.1:9880",
   "listen_host": "127.0.0.1",
@@ -41,13 +41,15 @@
       "character_name": "feibi",
       "language": "Chinese",
       "ref_audio": "CharacterModels/v2ProPlus/feibi/prompt_wav/zh_vo_Main_Linaxita_2_1_10_26.wav",
-      "prompt_text": "在此之前，请您务必继续享受旅居拉古那的时光。"
+      "prompt_text": "在此之前，请您务必继续享受旅居拉古那的时光。",
+      "onnx_model_dir": "CharacterModels/v2ProPlus/feibi/tts_models"
     },
     "dq-ONNX": {
       "character_name": "dq",
       "language": "Hybrid-Chinese-English",
       "ref_audio": "<path to your own reference wav>",
-      "prompt_text": "<transcript of the reference wav>"
+      "prompt_text": "<transcript of the reference wav>",
+      "onnx_model_dir": "models_dq_v2pro"
     }
   },
   "emotion_carry": true,
