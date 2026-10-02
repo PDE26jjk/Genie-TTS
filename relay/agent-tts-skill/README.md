@@ -1,14 +1,17 @@
-# agent-tts — a ZCode skill for speech output
+# agent-tts — speech output for coding agents
 
-`agent-tts` lets a ZCode agent speak text out loud on demand: the agent
+`agent-tts` lets a coding agent speak text out loud on demand: the agent
 posts text to the local TTS relay (`tts_relay_tray.py`, default
 `http://127.0.0.1:9881`) and the current backend (Genie / GPT-SoVITS)
 synthesizes and plays it with the active voice. No screen scraping, no
 log watching — the agent calls the HTTP API explicitly.
 
+The skill is agent-agnostic. Anything that can run a shell command can
+use it; the `SKILL.md` merely teaches skill-capable agents when and how.
+
 Files:
 
-- `SKILL.md` — the skill definition (loaded by ZCode, written in Chinese)
+- `SKILL.md` — the skill definition (written in Chinese)
 - `tts_say.py` — the helper script the skill tells the agent to run
   (standard library only, works with any Python 3.8+)
 
@@ -24,12 +27,20 @@ Files:
    Leave it running in the tray. The port is set by `listen_port` in
    `tts_relay_config.json` (default 9881).
 
-2. ZCode (desktop or CLI) with skill support — any recent version.
+2. Any coding agent that can execute shell commands (ZCode, Claude Code,
+   Codex, ...). Skill-file support is optional but recommended.
 
-## Install (per user)
+## Install (per user, per agent)
 
-Copy this folder into the ZCode user-level skill directory, keeping the
-folder name `agent-tts`:
+Copy this folder, keeping the folder name `agent-tts`, into the skill
+directory of whichever agent(s) you use:
+
+| Agent          | Skill directory                          |
+|----------------|------------------------------------------|
+| ZCode          | `~/.zcode/skills/agent-tts`              |
+| Claude Code    | `~/.claude/skills/agent-tts`             |
+| Codex          | `$CODEX_HOME/skills/agent-tts` (default `~/.codex/skills`) |
+| anything else  | no install needed — see below            |
 
 **Windows (PowerShell):**
 
@@ -45,9 +56,13 @@ mkdir -p ~/.zcode/skills
 cp -r <repo>/relay/agent-tts-skill ~/.zcode/skills/agent-tts
 ```
 
-`<repo>` is your Genie-TTS checkout. The skill is user-level, so it is
-available in every workspace. Start (or restart) a ZCode session so the
-skill list reloads, then check it appears in the available skills.
+`<repo>` is your Genie-TTS checkout. Restart the agent session so its
+skill list reloads.
+
+**No skill mechanism?** Nothing to install: give the agent the absolute
+path to `tts_say.py` (in its memory/instructions file, or just tell it
+in conversation) and it can run the same commands. The script is the
+whole integration.
 
 ## Usage
 
@@ -64,8 +79,9 @@ python "<skill-dir>\tts_say.py" --status     # queue / playing state
 python "<skill-dir>\tts_say.py" --stop       # abort current speech, clear queue
 ```
 
-`<skill-dir>` is the folder the SKILL.md was loaded from. Long texts are
-split into sentences by the relay and queued automatically.
+`<skill-dir>` is the folder the SKILL.md was loaded from (or wherever
+`tts_say.py` lives). Long texts are split into sentences by the relay
+and queued automatically.
 
 ## Configuration
 
