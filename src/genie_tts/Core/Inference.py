@@ -352,7 +352,10 @@ class GENIE:
             yield np.asarray(y_tokens[P:-1], dtype=np.int64)[None, None, :], True
             return
 
-        for _ in range(engine.max_len - kv_pos - 2):
+        # budget: ~6 tokens per input phone is a generous ceiling; anything
+        # beyond it is junk tail the model emits before settling on EOS
+        token_budget = int(text_seq.shape[-1]) * 6 + 60
+        for _ in range(min(engine.max_len - kv_pos - 2, token_budget)):
             if self.stop_event.is_set():
                 return
             logits = engine.step(token, pe_pos, kv_pos)

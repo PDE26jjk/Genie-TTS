@@ -28,6 +28,8 @@ from PIL import Image, ImageDraw, ImageFont
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "tts_relay_config.json")
 
+HOOK_MARKER = os.path.join(os.path.expanduser("~"), ".zcode", "hooks", "tts_off")
+
 DEFAULTS = {
     "api_url": "http://127.0.0.1:9880",
     "listen_host": "127.0.0.1",
@@ -570,6 +572,14 @@ def main():
     def play_test(icon, item):
         relay.say(relay.cfg.get("test_text") or "测试文本。")
 
+    def toggle_hook(icon, item):
+        # the ZCode Stop-hook stays silent while the marker file exists
+        if os.path.exists(HOOK_MARKER):
+            os.remove(HOOK_MARKER)
+        else:
+            os.makedirs(os.path.dirname(HOOK_MARKER), exist_ok=True)
+            open(HOOK_MARKER, "w").close()
+
     def quit_app(icon, item):
         icon.stop()
         httpd.shutdown()
@@ -632,6 +642,8 @@ def main():
         pystray.MenuItem("开始播放流", start_stream),
         pystray.MenuItem("停止并清空流", stop_stream),
         pystray.MenuItem("播放测试文本", play_test),
+        pystray.MenuItem("朗读ZCode回复", toggle_hook,
+                         checked=lambda item: not os.path.exists(HOOK_MARKER)),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("音量", pystray.Menu(*volume_items)),
         pystray.MenuItem("后端", pystray.Menu(*backend_items)),
