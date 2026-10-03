@@ -40,26 +40,17 @@ DEFAULTS = {
     "listen_host": "127.0.0.1",
     "listen_port": 9881,
     "volume": 1.0,
-    "ref_audio": "R:\\git\\dsh_projects\\cyber_persona\\GPT-SoVITS-v2pro-20250604\\output\\slicer_opt\\dq1.wav.reformatted_vocals.flac_0001392000_0001570560.wav",
-    "prompt_text": "期待明年，明年一定做，今年我也有在想。",
     "text_lang": "auto",
     "text_split": "cut5",
     "prompt_lang": "zh",
     "sr": 32000,
+    "speed": 1.0,  # windextts speech-rate multiplier (0.5-2.0; 1/duration_factor)
     "auto_play": True,
     "seed": -1,
-    "test_text": "你好，这是一段测试文本，用来快速检查当前后端和音色是否正常。",
+    "test_text": "你好,这是一段测试文本,用来快速检查当前后端和音色是否正常.",
     "checkpoints": {
-        "dq-v2Pro(微调)": {
-            "gpt": "GPT_weights_v2Pro/dq-e15.ckpt",
-            "sovits": "SoVITS_weights_v2Pro/dq_e8_s176.pth",
-        },
-        "v2Pro-预训练": {
-            "gpt": "GPT_SoVITS/pretrained_models/s1v3.ckpt",
-            "sovits": "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2Pro.pth",
-        },
     },
-    "default_checkpoint": "dq-v2Pro(微调)",
+    "default_checkpoint": "",
 }
 
 
@@ -79,6 +70,9 @@ class Relay:
     def __init__(self, cfg):
         self.cfg = cfg
         self.volume = max(0.0, min(1.5, float(cfg.get("volume", 1.0))))
+        # windextts speech-rate multiplier; duration_factor = 1/speed
+        self.speed = min(2.0, max(0.5, float(cfg.get("speed", 1.0))))
+        self._speed_window_open = False
         self.backends = cfg.get("backends") or {
             "GPT-SoVITS": {"type": "gptsovits", "api_url": cfg.get("api_url", "http://127.0.0.1:9880")}
         }
@@ -116,11 +110,9 @@ class Relay:
         self._stream_restart = object()
         # playback prebuffer in seconds; overridden per backend entry
         self._play_prebuffer = float(cfg.get("prebuffer_s", 1.5))
-        # windextts voices live server-side (--voices at server startup);
-        # fetch the list once at startup (+ once per backend switch). The
-        # optional cfg 'windextts_voices' entries are per-voice OVERRIDES
-        # (language/emo_vector) only — ref_audio belongs to the server.
-        self._windextts_voices: dict[str, dict] = {}
+        # fetch windextts voices once at startup (server --voices is the
+        # single source; the optional cfg 'windextts_voices' entries are
+        # per-voice OVERRIDES — language/emo_vector — never ref_audio)
         for name, b in self.backends.items():
             if b.get("type") == "windextts":
                 self._fetch_windextts_voices(name)
@@ -135,6 +127,8 @@ class Relay:
             print(f"[relay] windextts voice fetch failed ({b.get('api_url')}): {e}", flush=True)
             return
         overrides = self.cfg.get("windextts_voices") or {}
+        if voices:
+            self.model_name = self.model_name or voices[0]
         self._windextts_voices[backend_name] = {
             v: dict(overrides.get(v) or {}) for v in voices
         }
@@ -239,10 +233,8 @@ class Relay:
             return 0
         # enqueue each piece separately: the gen loop pipelines generation
         # ahead of playback per item, so long replies flow piece by piece
-        pieces = self._split_text(text)
         with self.cond:
-            for piece in pieces:
-                self.texts.append(piece)
+            self.texts.append(text)
             n = len(self.texts)
             # play=True forces start, play=False leaves the stream paused,
             # None defers to the auto_play config
@@ -388,6 +380,59 @@ class Relay:
         self._refresh_menu()
         return True
 
+    def set_speed(self, value):
+        """windextts speech-rate multiplier: clamp to [0.5, 2.0], apply
+        immediately (sent as duration_factor = 1/speed) and persist."""
+        try:
+            value = min(2.0, max(0.5, float(value)))
+        except (TypeError, ValueError):
+            return False
+        with self.lock:
+            self.speed = value
+        try:
+            cfg = {}
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, encoding="utf-8") as f:
+                    cfg = json.load(f)
+            cfg["speed"] = round(value, 2)
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print("failed to persist speed:", e)
+        self._refresh_menu()
+        return True
+
+    def open_speed_slider(self, *args):
+        """tkinter slider window in its own thread (Tk must be created and
+        used from one thread; the tray keeps running independently)."""
+        if self._speed_window_open:
+            return
+        self._speed_window_open = True
+
+        def _run():
+            try:
+                import tkinter as tk
+                root = tk.Tk()
+                root.title("语速 (windextts 后端)")
+                tk.Label(root, text="拖动调整语速，实时生效并保存").pack(padx=14, pady=(12, 2))
+
+                def on_move(v):
+                    self.set_speed(float(v))
+
+                scale = tk.Scale(root, from_=0.5, to=2.0, resolution=0.05,
+                                 orient="horizontal", length=300,
+                                 label="语速倍率", command=on_move)
+                scale.set(self.speed)
+                scale.pack(padx=14, pady=(2, 14))
+                root.protocol("WM_DELETE_WINDOW", root.destroy)
+                root.mainloop()
+            except Exception as e:
+                print("speed slider failed:", e, flush=True)
+            finally:
+                self._speed_window_open = False
+
+        threading.Thread(target=_run, daemon=True).start()
+
     # ---- pipeline workers ----
     def gen_loop(self):
         """Generation thread: pulls texts and streams PCM into audio_q ahead
@@ -519,12 +564,13 @@ class Relay:
         return chunks
 
     def _generate(self, text):
-        print(f"[relay] speak: {text}", flush=True)
         # a freshly popped item always generates: the abort flag belongs to
         # stop/switch actions on IN-FLIGHT generation, and leaving it set
         # (backend switch -> stop()) would silently swallow new items
         self.abort.clear()
-        for chunk in self._split_text(text):
+        chunks = self._split_text(text) if self.backend().get("type") != "windextts" else [text]
+        for chunk in chunks:
+            print(f"[relay] speak chunk: {chunk}", flush=True)
             if self.abort.is_set():
                 print("[relay] generate aborted mid-text", flush=True)
                 return
@@ -558,7 +604,7 @@ class Relay:
                     ref_override = (concat_path, concat_text)
                     print(f"[relay] concat ref: {concat_text[:40]}...", flush=True)
         if b.get("type") == "windextts":
-            entry = (self.cfg.get("windextts_voices") or {}).get(self.model_name, {})
+            entry = self.models_for(self.backend_name).get(self.model_name, {})
             # IndexTTS-2.5 via the resident windextts-server: same wire
             # protocol as genie (raw s16le PCM chunks from POST /tts) at the
             # backend's own sample rate (22050, set via the backend 'sr' key)
@@ -569,6 +615,8 @@ class Relay:
                 # max_text_tokens_per_segment and streams one chunk per segment
                 "split_sentence": False,
                 "language": entry.get("language", "ZH"),
+                # tray speed slider: speed 1.2 = faster = shorter duration
+                "duration_factor": round(1.0 / self.speed, 3),
             }
             if entry.get("emo_vector"):
                 payload["emo_vector"] = entry["emo_vector"]
@@ -792,6 +840,9 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/volume":
             ok = relay.set_volume(body.get("volume"))
             self._json({"ok": ok, "status": relay.status()}, 200 if ok else 400)
+        elif self.path == "/speed":
+            ok = relay.set_speed(body.get("speed"))
+            self._json({"ok": ok, "status": relay.status()}, 200 if ok else 400)
         else:
             self._json({"error": "unknown endpoint"}, 404)
 
@@ -917,7 +968,19 @@ def main():
         with relay.lock:
             q = len(relay.texts)
             state = "播放中" if relay.playing else "已暂停"
-            return f"状态: {state} | 队列 {q} | 音量 {int(relay.volume * 100)}% | {relay.backend_name}: {relay.model_name}"
+            return (f"状态: {state} | 队列 {q} | 音量 {int(relay.volume * 100)}% "
+                    f"| 语速 {relay.speed:.2f}x | {relay.backend_name}: {relay.model_name}")
+
+    def make_speed(mult):
+        def _set(item, icon=None):
+            relay.set_speed(mult)
+        return _set
+
+    speed_items = [
+        pystray.MenuItem(f"{m:.1f}x", make_speed(m), radio=True,
+                         checked=lambda item, m=m: abs(relay.speed - m) < 0.03)
+        for m in (0.8, 0.9, 1.0, 1.1, 1.2)
+    ]
 
     menu = pystray.Menu(
         pystray.MenuItem(status_text, None, enabled=False),
@@ -929,6 +992,10 @@ def main():
                          checked=lambda item: bool(relay.cfg.get("emotion_carry"))),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("音量", pystray.Menu(*volume_items)),
+        pystray.MenuItem("语速 (windextts)", pystray.Menu(
+            pystray.MenuItem("语速滑块...", relay.open_speed_slider),
+            pystray.Menu.SEPARATOR,
+            *speed_items)),
         pystray.MenuItem("后端", pystray.Menu(*backend_items)),
         pystray.MenuItem("模型", pystray.Menu(*model_items)),
         pystray.Menu.SEPARATOR,
