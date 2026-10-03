@@ -235,26 +235,13 @@ class Relay:
                 self.audio_q.get_nowait()
             except queue.Empty:
                 break
-        stream = self.current_stream
-        if stream is not None:
-            # abort() kills sounddevice's blocking-write machinery for THIS
-            # stream object - and a write into it afterwards is SILENT, not
-            # an error. Whether the play loop notices depends on whether a
-            # write was in flight at this exact moment (a race), so signal
-            # the reopen explicitly instead of relying on the abort to
-            # interrupt a write.
-            try:
-                stream.abort()
-            except Exception:
-                pass
-        # the play loop consumes this sentinel, closes the dead stream and
-        # opens a fresh one; safe whether it is blocked on get() or writing.
-        # put_nowait: this runs on the tray/HTTP thread - blocking here if
-        # the queue ever filled up would look like a tray crash
-        try:
-            self.audio_q.put_nowait(self._stream_restart)
-        except queue.Full:
-            pass
+        # The play loop owns the stream and checkpoints between short write
+        # slices, so it drops the rest of the burst by itself; the sentinel
+        # reopens a fresh stream for the next burst. NEVER touch the stream
+        # from this thread: Pa_AbortStream against a blocked Pa_WriteStream
+        # is a native race that intermittently kills the whole process.
+        # put_nowait: blocking here if the queue filled up would look like
+        # a tray crash too.
         try:
             self.audio_q.put_nowait(self._stream_restart)
         except queue.Full:
@@ -385,11 +372,13 @@ class Relay:
     def _play_loop(self):
         """Playback thread: drains audio_q into the device continuously.
 
-        Owns the stream lifecycle: after every abort (stop/switch) or write
-        error the stream is closed and a fresh one opened, because
-        OutputStream.abort() permanently kills sounddevice's blocking-write
-        machinery for that stream object (writes would go into a dead ring
-        buffer -> permanent silence)."""
+        Owns the stream lifecycle exclusively: stop()/switch only set the
+        abort flag and queue a _stream_restart sentinel; this loop drops
+        the burst between write slices, closes the stream and opens a
+        fresh one. The reopen keeps latency and ring-buffer state clean
+        per burst - nothing ever touches the stream from other threads
+        (a cross-thread Pa_AbortStream against a blocked Pa_WriteStream
+        intermittently crashes the process natively)."""
         while True:
             try:
                 stream = sd.OutputStream(samplerate=int(self.cfg["sr"]),
@@ -408,12 +397,24 @@ class Relay:
             pending = bytearray()
 
             def _flush():
-                if pending:
-                    data = np.frombuffer(bytes(pending), dtype="<i2")
-                    if self.volume != 1.0:
-                        data = np.clip(data.astype(np.float32) * self.volume,
-                                       -32767, 32767).astype("<i2")
-                    stream.write(data)
+                if not pending:
+                    return
+                data = np.frombuffer(bytes(pending), dtype="<i2")
+                if self.volume != 1.0:
+                    data = np.clip(data.astype(np.float32) * self.volume,
+                                   -32767, 32767).astype("<i2")
+                # write in short slices with an abort checkpoint between
+                # them: stop() must never abort the stream from another
+                # thread (native Pa_AbortStream/Pa_WriteStream race), so
+                # the loop drops the tail here instead. Worst-case stop
+                # latency is one slice (~100ms) plus the device buffer.
+                slice_frames = max(1, int(0.1 * int(self.cfg["sr"])))
+                try:
+                    for i in range(0, len(data), slice_frames):
+                        if self.abort.is_set():
+                            break
+                        stream.write(data[i:i + slice_frames])
+                finally:
                     pending.clear()
 
             try:
