@@ -71,6 +71,11 @@
       "character_name": "feibi",
       "language": "ZH",
       "ref_audio": "CharacterModels/v2ProPlus/feibi/prompt_wav/zh_vo_Main_Linaxita_2_1_10_26.wav"
+    },
+    "dq-IndexTTS": {
+      "character_name": "dq",
+      "language": "ZH",
+      "ref_audio": "GPT-SoVITS/output/slicer_opt/dq_000139s.wav"
     }
   }
 }
