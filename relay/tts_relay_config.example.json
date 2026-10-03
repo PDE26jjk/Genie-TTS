@@ -34,6 +34,13 @@
       "api_url": "http://127.0.0.1:9883",
       "max_chunk_chars": 90,
       "prebuffer_s": 0.8
+    },
+    "WIndexTTS": {
+      "type": "windextts",
+      "api_url": "http://127.0.0.1:8010",
+      "sr": 22050,
+      "prebuffer_s": 0.8,
+      "max_chunk_chars": 180
     }
   },
   "genie_characters": {
@@ -57,6 +64,13 @@
     "dq-v2Pro(微调)": {
       "gpt": "GPT_weights_v2Pro/dq-e15.ckpt",
       "sovits": "SoVITS_weights_v2Pro/dq_e8_s176.pth"
+    }
+  },
+  "windextts_voices": {
+    "feibi-IndexTTS": {
+      "character_name": "feibi",
+      "language": "ZH",
+      "ref_audio": "CharacterModels/v2ProPlus/feibi/prompt_wav/zh_vo_Main_Linaxita_2_1_10_26.wav"
     }
   }
 }

@@ -131,6 +131,8 @@ class Relay:
         b = self.backends.get(backend_name, {})
         if b.get("type") == "genie":
             return self.cfg.get("genie_characters") or {}
+        if b.get("type") == "windextts":
+            return self.cfg.get("windextts_voices") or {}
         return self.cfg.get("checkpoints") or {}
 
     def set_backend(self, name):
@@ -380,8 +382,12 @@ class Relay:
         (a cross-thread Pa_AbortStream against a blocked Pa_WriteStream
         intermittently crashes the process natively)."""
         while True:
+            # per-backend sample rate (genie/gptsovits: cfg sr=32000,
+            # windextts: 22050) - stop()/set_backend() queue a _stream_restart
+            # sentinel, so a backend switch lands here and reopens the device
+            sr = int(self.backend().get("sr", self.cfg["sr"]))
             try:
-                stream = sd.OutputStream(samplerate=int(self.cfg["sr"]),
+                stream = sd.OutputStream(samplerate=sr,
                                          channels=1, dtype="int16")
                 stream.start()
             except Exception as e:
@@ -392,8 +398,7 @@ class Relay:
             # prebuffer: hold audio until this many seconds are queued before
             # the first write of each burst, so chunky backends (CPU mode)
             # don't starve the device between generation chunks
-            prebuf_bytes = int(self._play_prebuffer *
-                               int(self.cfg["sr"])) * 2
+            prebuf_bytes = int(self._play_prebuffer * sr) * 2
             pending = bytearray()
 
             def _flush():
@@ -408,7 +413,7 @@ class Relay:
                 # thread (native Pa_AbortStream/Pa_WriteStream race), so
                 # the loop drops the tail here instead. Worst-case stop
                 # latency is one slice (~100ms) plus the device buffer.
-                slice_frames = max(1, int(0.1 * int(self.cfg["sr"])))
+                slice_frames = max(1, int(0.1 * sr))
                 try:
                     for i in range(0, len(data), slice_frames):
                         if self.abort.is_set():
@@ -514,6 +519,21 @@ class Relay:
                 if concat_path is not None:
                     ref_override = (concat_path, concat_text)
                     print(f"[relay] concat ref: {concat_text[:40]}...", flush=True)
+        if b.get("type") == "windextts":
+            entry = (self.cfg.get("windextts_voices") or {}).get(self.model_name, {})
+            # IndexTTS-2.5 via the resident windextts-server: same wire
+            # protocol as genie (raw s16le PCM chunks from POST /tts) at the
+            # backend's own sample rate (22050, set via the backend 'sr' key)
+            payload = {
+                "character_name": entry.get("character_name", self.model_name),
+                "text": text,
+                # protocol parity; the engine segments by
+                # max_text_tokens_per_segment and streams one chunk per segment
+                "split_sentence": False,
+                "language": entry.get("language", "ZH"),
+            }
+            if entry.get("emo_vector"):
+                payload["emo_vector"] = entry["emo_vector"]
         if b.get("type") == "genie":
             entry = (self.cfg.get("genie_characters") or {}).get(self.model_name, {})
             # token carry: the server keeps the anchor reference and appends
