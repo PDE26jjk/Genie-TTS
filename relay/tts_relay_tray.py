@@ -304,6 +304,11 @@ class Relay:
                 }, timeout=120)
                 ok = r1.ok and r2.ok
                 msg = f"{r1.status_code}/{r2.status_code}"
+            elif b.get("type") == "windextts":
+                # voices are resident server-side (registered at startup via
+                # --voices); the server maps character_name -> ref audio per
+                # request, so switching is a client-side model_name change
+                ok, msg = True, "resident voice"
             else:
                 r1 = HTTP.get(b["api_url"] + "/set_gpt_weights",
                                   params={"weights_path": models[name]["gpt"]}, timeout=120)
