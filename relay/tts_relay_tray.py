@@ -532,6 +532,10 @@ class Relay:
                 "split_sentence": False,
                 "language": entry.get("language", "ZH"),
             }
+            # pause-vocalization mitigation mode: space (default) | remap |
+            # strip | period | keep — per-voice override in the voice entry
+            if entry.get("pause_punct"):
+                payload["pause_punct"] = entry["pause_punct"]
             if entry.get("emo_vector"):
                 payload["emo_vector"] = entry["emo_vector"]
         if b.get("type") == "genie":
