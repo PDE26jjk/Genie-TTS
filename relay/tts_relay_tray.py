@@ -82,6 +82,10 @@ class Relay:
         self.backends = cfg.get("backends") or {
             "GPT-SoVITS": {"type": "gptsovits", "api_url": cfg.get("api_url", "http://127.0.0.1:9880")}
         }
+        # windextts voices live server-side; populated once per backend below
+        # and refreshed on set_backend. MUST exist before the first models_for
+        # call (the default-checkpoint fallback below queries it).
+        self._windextts_voices: dict[str, dict] = {}
         self.backend_name = cfg.get("default_backend") if cfg.get("default_backend") in self.backends \
             else next(iter(self.backends))
         # active model entry name (checkpoint for gptsovits, character for genie)
@@ -112,6 +116,29 @@ class Relay:
         self._stream_restart = object()
         # playback prebuffer in seconds; overridden per backend entry
         self._play_prebuffer = float(cfg.get("prebuffer_s", 1.5))
+        # windextts voices live server-side (--voices at server startup);
+        # fetch the list once at startup (+ once per backend switch). The
+        # optional cfg 'windextts_voices' entries are per-voice OVERRIDES
+        # (language/emo_vector) only — ref_audio belongs to the server.
+        self._windextts_voices: dict[str, dict] = {}
+        for name, b in self.backends.items():
+            if b.get("type") == "windextts":
+                self._fetch_windextts_voices(name)
+
+    def _fetch_windextts_voices(self, backend_name: str):
+        b = self.backends.get(backend_name, {})
+        try:
+            r = HTTP.get(b["api_url"] + "/health", timeout=5)
+            r.raise_for_status()
+            voices = r.json().get("voices") or []
+        except Exception as e:
+            print(f"[relay] windextts voice fetch failed ({b.get('api_url')}): {e}", flush=True)
+            return
+        overrides = self.cfg.get("windextts_voices") or {}
+        self._windextts_voices[backend_name] = {
+            v: dict(overrides.get(v) or {}) for v in voices
+        }
+        print(f"[relay] windextts voices: {voices} ({b.get('api_url')})", flush=True)
 
     # ---- backend/model helpers ----
     def backend(self):
@@ -132,7 +159,9 @@ class Relay:
         if b.get("type") == "genie":
             return self.cfg.get("genie_characters") or {}
         if b.get("type") == "windextts":
-            return self.cfg.get("windextts_voices") or {}
+            # single source of truth is the server (--voices); per-voice
+            # relay entries are optional overrides only
+            return self._windextts_voices.get(backend_name) or {}
         return self.cfg.get("checkpoints") or {}
 
     def set_backend(self, name):
@@ -147,6 +176,10 @@ class Relay:
         if self.model_name not in models:
             self.model_name = next(iter(models), None)
         b = self.backend()
+        # entering a windextts backend: re-fetch the server's voice list once
+        # (server may have been (re)started with different --voices since)
+        if b.get("type") == "windextts":
+            self._fetch_windextts_voices(name)
         # leaving a genie backend: free its resident character, otherwise
         # the orphaned ORT sessions keep multi-GB host memory pinned
         if name != old_backend:

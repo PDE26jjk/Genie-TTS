@@ -66,16 +66,5 @@
       "sovits": "SoVITS_weights_v2Pro/dq_e8_s176.pth"
     }
   },
-  "windextts_voices": {
-    "feibi-IndexTTS": {
-      "character_name": "feibi",
-      "language": "ZH",
-      "ref_audio": "CharacterModels/v2ProPlus/feibi/prompt_wav/zh_vo_Main_Linaxita_2_1_10_26.wav"
-    },
-    "dq-IndexTTS": {
-      "character_name": "dq",
-      "language": "ZH",
-      "ref_audio": "GPT-SoVITS/output/slicer_opt/dq_000139s.wav"
-    }
-  }
+  "windextts_voices": {}
 }
