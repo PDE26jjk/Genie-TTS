@@ -23,3 +23,5 @@ genie_server*.log
 genie_diag.log
 genie_server.err.log
 relay/breeze_test.wav
+.idea/
+relay/sf_*

@@ -51,12 +51,26 @@
       "prebuffer_s": 0.3,
       "model_id": "breeze-tts-2",
       "language_code": "zh"
+    },
+    "SiliconFlow(云端)": {
+      "_comment6": "Cloud TTS (siliconflow.cn): OpenAI-compatible POST /v1/audio/speech with stream:true returns headerless s16le mono PCM at 24 kHz; billed per UTF-8 byte of input text (TTS ~15 CNY / 1M bytes - verify on their pricing page). No public balance endpoint (GET /v1/user/info was deprecated). Voices live in the top-level 'siliconflow_voices' dict: 'voice' is a preset (\"FunAudioLLM/CosyVoice2-0.5B:alex\") or a cloned URI returned by POST /v1/uploads/audio/voice (that call needs model, customName, audio as data:audio/...;base64 and the TRANSCRIPT of the reference audio - without 'text' the clone fails with 500 at synthesis time).",
+      "type": "siliconflow",
+      "api_url": "https://api.siliconflow.cn",
+      "api_key": "<your siliconflow key>",
+      "sr": 24000,
+      "sample_rate": 24000,
+      "prebuffer_s": 0.5,
+      "model": "FunAudioLLM/CosyVoice2-0.5B"
     }
   },
-  "breeze_voices": {
+  "breezeblue_voices": {
     "breeze-默认": {
       "voice_id": "voc_<your voice id>"
     }
+  },
+  "siliconflow_voices": {
+    "SF-alex(预置)": {"voice": "FunAudioLLM/CosyVoice2-0.5B:alex"},
+    "SF-克隆示例": {"voice": "speech:<customName>:<id1>:<id2>"}
   },
   "genie_characters": {
     "feibi-ONNX": {
