@@ -9,7 +9,9 @@
 #   POST /start      begin consuming the queue
 #   POST /stop       abort current utterance and clear the queue
 #   POST /checkpoint {"name": "<key in tts_relay_config.json>"}
-#   GET  /status     {"state": "...", "queue": [...], "checkpoint": "..."}
+#   GET  /status     {"state": "...", "queue": [...], "checkpoint": "...",
+#                     "balance": {"kind": "cloud|local", "provider": ...,
+#                                 "credits": 1234.5?}}
 #
 # Run:  runtime\pythonw.exe tts_relay_tray.py   (pythonw hides the console)
 import json
@@ -60,6 +62,20 @@ DEFAULTS = {
 _ZH_PUNCT_TO_ASCII = str.maketrans({
     "，": ",", "。": ".", "！": "!", "？": "?", "；": ",", "：": ",", "、": ",",
 })
+
+
+def _billable_units(text: str) -> int:
+    # breeze.blue per-character billing: CJK chars (Han / kana / Hangul)
+    # bill 2 units, everything else 1 unit; 10 units = 1 credit
+    total = 0
+    for ch in text:
+        o = ord(ch)
+        if (0x4E00 <= o <= 0x9FFF or 0x3040 <= o <= 0x30FF
+                or 0xAC00 <= o <= 0xD7AF):
+            total += 2
+        else:
+            total += 1
+    return total
 
 
 def load_config():
@@ -124,6 +140,10 @@ class Relay:
         for name, b in self.backends.items():
             if b.get("type") == "windextts":
                 self._fetch_windextts_voices(name)
+        # /status balance snapshot (cloud credits vs local), refreshed on
+        # every /say and backend switch
+        self.balance_info = None
+        self._refresh_balance_async()
 
     def _fetch_windextts_voices(self, backend_name: str):
         b = self.backends.get(backend_name, {})
@@ -141,6 +161,39 @@ class Relay:
             v: dict(overrides.get(v) or {}) for v in voices
         }
         print(f"[relay] windextts voices: {voices} ({b.get('api_url')})", flush=True)
+
+    # ---- balance visibility for agent callers ----
+    def _refresh_balance(self):
+        """Store a /status 'balance' snapshot: live credits for cloud
+        providers (the balance endpoint is free), kind=local otherwise."""
+        b = self.backend()
+        btype = b.get("type")
+        if btype == "breezeblue":
+            api_key = b.get("api_key") or os.environ.get("BREEZE_API_KEY", "")
+            try:
+                r = HTTP.get(b["api_url"].rstrip("/") + "/v1/balance",
+                             headers={"xi-api-key": api_key}, timeout=8)
+                r.raise_for_status()
+                self.balance_info = {
+                    "kind": "cloud",
+                    "provider": "breezeblue",
+                    "credits": r.json().get("balance"),
+                }
+            except Exception as e:
+                print(f"[relay] balance fetch failed: {e}", flush=True)
+                self.balance_info = {"kind": "cloud", "provider": "breezeblue",
+                                     "error": str(e)}
+        else:
+            self.balance_info = {"kind": "local", "provider": btype}
+        # the tray menu caches item text until update_menu(), so a refresh
+        # triggered from say()/set_backend() is too early for this async
+        # fetch - rebuild the menu once the new balance has landed
+        self._refresh_menu()
+
+    def _refresh_balance_async(self):
+        # network call, kept off the /say handler so agents enqueue instantly;
+        # the result lands in /status a moment later
+        threading.Thread(target=self._refresh_balance, daemon=True).start()
 
     # ---- backend/model helpers ----
     def backend(self):
@@ -164,6 +217,10 @@ class Relay:
             # single source of truth is the server (--voices); per-voice
             # relay entries are optional overrides only
             return self._windextts_voices.get(backend_name) or {}
+        if b.get("type") == "breezeblue":
+            # cloud provider: voices are config-declared (breeze_voices) and
+            # resolved per request, so switching is purely client-side
+            return self.cfg.get("breeze_voices") or {}
         return self.cfg.get("checkpoints") or {}
 
     def set_backend(self, name):
@@ -204,6 +261,8 @@ class Relay:
             except Exception:
                 pass
         self._refresh_menu()
+        # backend kind may flip cloud<->local: refresh the balance snapshot
+        self._refresh_balance_async()
         return True
 
     def set_carry(self, enabled: bool):
@@ -239,6 +298,7 @@ class Relay:
         text = (text or "").strip()
         if not text:
             return 0
+        self._refresh_balance_async()
         # enqueue each piece separately: the gen loop pipelines generation
         # ahead of playback per item, so long replies flow piece by piece
         with self.cond:
@@ -342,6 +402,10 @@ class Relay:
                 # --voices); the server maps character_name -> ref audio per
                 # request, so switching is a client-side model_name change
                 ok, msg = True, "resident voice"
+            elif b.get("type") == "breezeblue":
+                # cloud voices are address-per-request (voice_id in the URL),
+                # nothing to load server-side
+                ok, msg = True, "cloud voice"
             else:
                 r1 = HTTP.get(b["api_url"] + "/set_gpt_weights",
                                   params={"weights_path": models[name]["gpt"]}, timeout=120)
@@ -365,6 +429,9 @@ class Relay:
                 "model": self.model_name,
                 "volume": round(self.volume, 2),
                 "speaking": self.current_stream is not None,
+                # billing visibility for agent callers: cloud backends carry
+                # the live credit balance, local ones declare kind=local
+                "balance": self.balance_info or {"kind": "unknown"},
             }
 
     def set_volume(self, value):
@@ -421,7 +488,7 @@ class Relay:
             try:
                 import tkinter as tk
                 root = tk.Tk()
-                root.title("语速 (windextts 后端)")
+                root.title("语速 (windextts/breezeblue)")
                 tk.Label(root, text="拖动调整语速，实时生效并保存").pack(padx=14, pady=(12, 2))
 
                 def on_move(v):
@@ -576,8 +643,12 @@ class Relay:
         # stop/switch actions on IN-FLIGHT generation, and leaving it set
         # (backend switch -> stop()) would silently swallow new items
         self.abort.clear()
-        chunks = self._split_text(text) if self.backend().get("type") != "windextts" else [text]
-        if self.backend().get("type") == "windextts":
+        btype = self.backend().get("type")
+        # windextts segments internally; breezeblue streams any text up to
+        # its 1000-char limit and bills per character, so neither benefits
+        # from client-side splitting
+        chunks = [text] if btype in ("windextts", "breezeblue") else self._split_text(text)
+        if btype == "windextts":
             # pause-punctuation workaround: fullwidth marks vocalize on
             # IndexTTS-2.5, ASCII equivalents do not (see _ZH_PUNCT_TO_ASCII)
             chunks = [c.translate(_ZH_PUNCT_TO_ASCII) for c in chunks]
@@ -615,7 +686,30 @@ class Relay:
                 if concat_path is not None:
                     ref_override = (concat_path, concat_text)
                     print(f"[relay] concat ref: {concat_text[:40]}...", flush=True)
-        if b.get("type") == "windextts":
+        # per-backend request construction; the shared POST below streams
+        # raw s16le mono PCM for every backend type
+        url = b["api_url"] + "/tts"
+        headers = {}
+        if b.get("type") == "breezeblue":
+            # cloud provider (breeze.blue): POST /v1/text-to-speech/{voice_id}/stream
+            # returns headerless s16le mono PCM at 24 kHz (output_format=pcm);
+            # billing is per character, estimated after the stream below
+            entry = self.models_for(self.backend_name).get(self.model_name, {})
+            voice_id = entry.get("voice_id") or b.get("voice_id", "")
+            api_key = b.get("api_key") or os.environ.get("BREEZE_API_KEY", "")
+            url = f"{b['api_url'].rstrip('/')}/v1/text-to-speech/{voice_id}/stream"
+            headers = {"xi-api-key": api_key}
+            payload = {
+                "text": text,
+                "model_id": entry.get("model_id", b.get("model_id", "breeze-tts-2")),
+                # tray speed slider maps directly: breeze speed is a plain
+                # 0.5-2.0 speech-rate multiplier, same clamp as self.speed
+                "voice_settings": {"speed": round(self.speed, 3)},
+            }
+            lang = entry.get("language_code") or b.get("language_code")
+            if lang:
+                payload["language_code"] = lang
+        elif b.get("type") == "windextts":
             entry = self.models_for(self.backend_name).get(self.model_name, {})
             # IndexTTS-2.5 via the resident windextts-server: same wire
             # protocol as genie (raw s16le PCM chunks from POST /tts) at the
@@ -665,7 +759,7 @@ class Relay:
                 payload["seed"] = seed  # fixed seed -> reproducible audio
         t_start = time.perf_counter()
         first_byte = None
-        with HTTP.post(b["api_url"] + "/tts", json=payload,
+        with HTTP.post(url, json=payload, headers=headers,
                            stream=True, timeout=(10, 120)) as r:
             r.raise_for_status()
             buf = bytearray()
@@ -685,6 +779,12 @@ class Relay:
                     if captured is not None:
                         captured.extend(chunk)
                     del buf[:usable]
+        if b.get("type") == "breezeblue" and not self.abort.is_set():
+            # per-character billing (CJK 2 units / other 1, 10 units = 1
+            # credit) - log an estimate so credit burn stays visible
+            units = _billable_units(text)
+            print(f"[relay] breezeblue billed ~{units} units "
+                  f"(~{units / 10:.1f} credits)", flush=True)
         if first_byte is not None:
             print(f"[relay] generated: total {time.perf_counter() - t_start:.2f}s, "
                   f"first byte at {first_byte - t_start:.2f}s", flush=True)
@@ -976,12 +1076,26 @@ def main():
         for pct in range(0, 101, 10)
     ]
 
+    # two disabled rows instead of one long line (and Win32 menus cannot
+    # render "\n" inside a single item): line 1 = playback, line 2 =
+    # backend/model/balance
     def status_text(*args):
         with relay.lock:
             q = len(relay.texts)
             state = "播放中" if relay.playing else "已暂停"
             return (f"状态: {state} | 队列 {q} | 音量 {int(relay.volume * 100)}% "
-                    f"| 语速 {relay.speed:.2f}x | {relay.backend_name}: {relay.model_name}")
+                    f"| 语速 {relay.speed:.2f}x")
+
+    def status_text_backend(*args):
+        with relay.lock:
+            b = relay.balance_info or {}
+            if b.get("kind") == "cloud" and b.get("credits") is not None:
+                bal = f" | 余额 {b['credits']:.1f}"
+            elif b.get("kind") == "local":
+                bal = " | 本地部署"
+            else:
+                bal = ""
+            return f"{relay.backend_name}: {relay.model_name}{bal}"
 
     def make_speed(mult):
         def _set(item, icon=None):
@@ -996,6 +1110,7 @@ def main():
 
     menu = pystray.Menu(
         pystray.MenuItem(status_text, None, enabled=False),
+        pystray.MenuItem(status_text_backend, None, enabled=False),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("开始播放流", start_stream),
         pystray.MenuItem("停止并清空流", stop_stream),
@@ -1004,7 +1119,7 @@ def main():
                          checked=lambda item: bool(relay.cfg.get("emotion_carry"))),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("音量", pystray.Menu(*volume_items)),
-        pystray.MenuItem("语速 (windextts)", pystray.Menu(
+        pystray.MenuItem("语速 (windextts/breezeblue)", pystray.Menu(
             pystray.MenuItem("语速滑块...", relay.open_speed_slider),
             pystray.Menu.SEPARATOR,
             *speed_items)),

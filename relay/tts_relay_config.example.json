@@ -41,6 +41,21 @@
       "sr": 22050,
       "prebuffer_s": 0.8,
       "max_chunk_chars": 180
+    },
+    "BreezeBlue(云端)": {
+      "_comment5": "Cloud TTS (breeze.blue): streams raw s16le mono PCM at 24 kHz, bills per character (CJK 2 units, other 1; 10 units = 1 credit). api_key may also come from the BREEZE_API_KEY env var - prefer the env var over committing a key. Voices are declared in the top-level 'breeze_voices' dict, one entry per selectable tray voice.",
+      "type": "breezeblue",
+      "api_url": "https://api.breeze.blue",
+      "api_key": "<your breeze.blue key or leave empty to use BREEZE_API_KEY>",
+      "sr": 24000,
+      "prebuffer_s": 0.3,
+      "model_id": "breeze-tts-2",
+      "language_code": "zh"
+    }
+  },
+  "breeze_voices": {
+    "breeze-默认": {
+      "voice_id": "voc_<your voice id>"
     }
   },
   "genie_characters": {
