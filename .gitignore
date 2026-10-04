@@ -22,3 +22,4 @@ relay/tts_relay_config.json
 genie_server*.log
 genie_diag.log
 genie_server.err.log
+relay/breeze_test.wav

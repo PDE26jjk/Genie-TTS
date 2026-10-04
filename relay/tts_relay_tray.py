@@ -47,6 +47,9 @@ DEFAULTS = {
     "prompt_lang": "zh",
     "sr": 32000,
     "speed": 1.0,  # windextts speech-rate multiplier (0.5-2.0; 1/duration_factor)
+    # silence between back-to-back speak chunks (seconds); skipped when the
+    # queue is empty, i.e. playback has already caught up with generation
+    "chunk_gap_s": 0.5,
     "auto_play": True,
     "seed": -1,
     "test_text": "你好,这是一段测试文本,用来快速检查当前后端和音色是否正常.",
@@ -138,7 +141,7 @@ class Relay:
         # single source; the optional cfg 'windextts_voices' entries are
         # per-voice OVERRIDES — language/emo_vector — never ref_audio)
         for name, b in self.backends.items():
-            if b.get("type") == "windextts":
+            if b.get("type") == "windextts" and name == self.backend_name:
                 self._fetch_windextts_voices(name)
         # /status balance snapshot (cloud credits vs local), refreshed on
         # every /say and backend switch
@@ -558,6 +561,7 @@ class Relay:
             # don't starve the device between generation chunks
             prebuf_bytes = int(self._play_prebuffer * sr) * 2
             pending = bytearray()
+            last_was_marker = False  # collapse consecutive chunk boundaries
 
             def _flush():
                 if not pending:
@@ -590,7 +594,18 @@ class Relay:
                         break
                     if item is self._utt_end or item is None:
                         _flush()
+                        # inter-chunk gap, but only when the next chunk is
+                        # already queued behind this one (true back-to-back
+                        # playback); an empty queue means playback caught up
+                        # with generation and the natural pause is enough
+                        gap_s = float(self.cfg.get("chunk_gap_s", 0.0) or 0.0)
+                        if (not last_was_marker and gap_s > 0
+                                and self.audio_q.qsize() > 0
+                                and not self.abort.is_set()):
+                            stream.write(np.zeros(int(gap_s * sr), dtype="<i2"))
+                        last_was_marker = True
                         continue
+                    last_was_marker = False
                     pending.extend(item)
                     if len(pending) >= prebuf_bytes:
                         _flush()
@@ -658,6 +673,14 @@ class Relay:
                 print("[relay] generate aborted mid-text", flush=True)
                 return
             self._generate_one(chunk)
+            # chunk boundary for the playback loop: it inserts the
+            # configured chunk_gap_s silence only if the next chunk is
+            # already queued right behind this one. gen_loop adds the same
+            # marker after the whole text; consecutive markers collapse.
+            try:
+                self.audio_q.put_nowait(self._utt_end)
+            except queue.Full:
+                pass
 
     def _generate_one(self, text):
         self.abort.clear()
