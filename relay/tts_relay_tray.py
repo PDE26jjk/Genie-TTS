@@ -53,6 +53,14 @@ DEFAULTS = {
     "default_checkpoint": "",
 }
 
+# IndexTTS-2.5 occasionally vocalizes mid-utterance fullwidth CJK
+# punctuation as spurious syllables / word splits; the ASCII equivalents
+# are early well-trained tokens and do not trigger it (see WIndexTTS
+# README "Known quirk"). Applied per chunk in _generate, windextts only.
+_ZH_PUNCT_TO_ASCII = str.maketrans({
+    "，": ",", "。": ".", "！": "!", "？": "?", "；": ",", "：": ",", "、": ",",
+})
+
 
 def load_config():
     cfg = dict(DEFAULTS)
@@ -569,6 +577,10 @@ class Relay:
         # (backend switch -> stop()) would silently swallow new items
         self.abort.clear()
         chunks = self._split_text(text) if self.backend().get("type") != "windextts" else [text]
+        if self.backend().get("type") == "windextts":
+            # pause-punctuation workaround: fullwidth marks vocalize on
+            # IndexTTS-2.5, ASCII equivalents do not (see _ZH_PUNCT_TO_ASCII)
+            chunks = [c.translate(_ZH_PUNCT_TO_ASCII) for c in chunks]
         for chunk in chunks:
             print(f"[relay] speak chunk: {chunk}", flush=True)
             if self.abort.is_set():
