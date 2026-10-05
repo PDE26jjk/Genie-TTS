@@ -156,6 +156,11 @@ class Relay:
         # the backend-name check discards results from stale requests
         self.balance_info = None
         self._balance_lock = threading.Lock()
+        # keep-alive hygiene: cloud connections that idle past a NAT/proxy
+        # timeout look alive locally but are dead upstream - the first call
+        # after a pause then hangs ~20s until the remote closes. Evict the
+        # session pool after idle gaps; consecutive calls keep warm sockets
+        self._last_http_use = 0.0
         self._refresh_balance_async()
 
     def _fetch_windextts_voices(self, backend_name: str):
@@ -207,6 +212,7 @@ class Relay:
                 info = {"kind": "local", "provider": btype}
             if snapshot == self.backend_name:
                 self.balance_info = info
+            self._last_http_use = time.time()
             # the tray menu caches item text until update_menu(), so a
             # refresh triggered from say()/set_backend() is too early for
             # this async fetch - rebuild the menu once the balance landed
@@ -827,26 +833,50 @@ class Relay:
                 payload["seed"] = seed  # fixed seed -> reproducible audio
         t_start = time.perf_counter()
         first_byte = None
-        with HTTP.post(url, json=payload, headers=headers,
-                           stream=True, timeout=(10, 120)) as r:
-            r.raise_for_status()
-            buf = bytearray()
-            for piece in r.iter_content(chunk_size=4096):
-                if first_byte is None:
-                    first_byte = time.perf_counter()
-                    print(f"[relay] first byte: {first_byte - t_start:.2f}s "
-                          f"({b.get('type')} / {self.model_name})", flush=True)
-                if self.abort.is_set():
-                    break
-                buf.extend(piece)
-                # raw mode is s16le mono: only queue whole samples
-                usable = len(buf) - (len(buf) % 2)
-                if usable > 0:
-                    chunk = bytes(buf[:usable])
-                    self.audio_q.put(chunk)
-                    if captured is not None:
-                        captured.extend(chunk)
-                    del buf[:usable]
+        # see _last_http_use note in __init__: drop idle pooled connections
+        # before cloud requests (first request of a fresh burst)
+        if url.startswith("https") and time.time() - self._last_http_use > 30:
+            HTTP.close()
+        self._last_http_use = time.time()
+        for attempt in (1, 2):
+            try:
+                with HTTP.post(url, json=payload, headers=headers,
+                                   stream=True, timeout=(10, 120)) as r:
+                    r.raise_for_status()
+                    buf = bytearray()
+                    for piece in r.iter_content(chunk_size=4096):
+                        if first_byte is None:
+                            first_byte = time.perf_counter()
+                            print(f"[relay] first byte: {first_byte - t_start:.2f}s "
+                                  f"({b.get('type')} / {self.model_name})", flush=True)
+                        if self.abort.is_set():
+                            break
+                        buf.extend(piece)
+                        # raw mode is s16le mono: only queue whole samples
+                        usable = len(buf) - (len(buf) % 2)
+                        if usable > 0:
+                            chunk = bytes(buf[:usable])
+                            self.audio_q.put(chunk)
+                            if captured is not None:
+                                captured.extend(chunk)
+                            del buf[:usable]
+                break
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout) as e:
+                # transient network/provider hiccups (e.g. local proxy
+                # blips) kill the whole utterance with a traceback wall;
+                # retry once, but ONLY before any audio arrived - a retry
+                # after partial audio would duplicate speech (and for cloud
+                # providers possibly bill twice)
+                if first_byte is not None or attempt == 2:
+                    print(f"[relay] {b.get('type')} request failed: "
+                          f"{type(e).__name__} (no retry: "
+                          + ("audio already playing" if first_byte is not None
+                             else "second attempt") + ")", flush=True)
+                    raise
+                print(f"[relay] {b.get('type')} connection dropped before any "
+                      f"audio (attempt {attempt}/2): {type(e).__name__}, "
+                      f"retrying", flush=True)
         if b.get("type") == "breezeblue" and not self.abort.is_set():
             # per-character billing (CJK 2 units / other 1, 10 units = 1
             # credit) - log an estimate so credit burn stays visible
