@@ -13,6 +13,14 @@
 #                     "balance": {"kind": "cloud|local", "provider": ...,
 #                                 "credits": 1234.5?}}
 #
+# WINDENTTS BACKEND NOTE: use the FORK, not the upstream repo. The windextts
+# backend type depends on features added in
+#   https://github.com/PDE26jjk/WIndexTTS/tree/feat/segment-streaming
+# (segment-streaming POST /tts, duration_factor speed control, /health voice
+# listing, configurable low-vram segment budget). The upstream
+# https://github.com/baicai-1145/WIndexTTS lacks these endpoints and will
+# not work with this backend.
+#
 # Run:  runtime\pythonw.exe tts_relay_tray.py   (pythonw hides the console)
 import json
 import os
